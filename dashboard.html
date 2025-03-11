@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ERP Proyecto - Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            width: 100%;
+            max-width: 800px;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+        }
+        .user-info {
+            margin-bottom: 30px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .card-header {
+            font-weight: bold;
+            margin-bottom: 15px;
+            font-size: 18px;
+            color: #4CAF50;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+        }
+        .btn-secondary:hover {
+            background-color: #5a6268;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+        }
+        .btn-danger:hover {
+            background-color: #c82333;
+        }
+        .response {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            display: none;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .hidden {
+            display: none;
+        }
+        .logout-container {
+            text-align: right;
+            margin-bottom: 20px;
+        }
+        .qr-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .qr-container img {
+            max-width: 200px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logout-container">
+            <button id="logoutBtn" class="btn-secondary">Cerrar Sesión</button>
+        </div>
+        
+        <h1>Dashboard</h1>
+        
+        <div id="userInfo" class="user-info">
+            <p><strong>Cargando información de usuario...</strong></p>
+        </div>
+        
+        <!-- 2FA Management Section -->
+        <div class="card">
+            <div class="card-header">Gestión de Autenticación de Dos Factores (2FA)</div>
+            
+            <div id="twoFAStatus">
+                <p>Cargando estado de 2FA...</p>
+            </div>
+            
+            <!-- Enable 2FA Form -->
+            <div id="enable2FAForm" class="hidden">
+                <h3>Activar 2FA</h3>
+                <div class="form-group">
+                    <label for="twoFAMethod">Método de 2FA</label>
+                    <select id="twoFAMethod" name="twoFAMethod">
+                        <option value="app">Aplicación de Autenticación</option>
+                        <option value="email">Correo Electrónico</option>
+                    </select>
+                </div>
+                <button id="enable2FABtn">Activar 2FA</button>
+            </div>
+            
+            <!-- Verify 2FA Form (App Method) -->
+            <div id="verifyAppForm" class="hidden">
+                <h3>Verificar Configuración de 2FA (App)</h3>
+                <div class="qr-container">
+                    <img id="qrCode" src="" alt="QR Code para 2FA">
+                </div>
+                <p>Escanea el código QR con tu aplicación de autenticación (como Google Authenticator) y luego ingresa el código generado:</p>
+                <div class="form-group">
+                    <label for="appCode">Código de Verificación</label>
+                    <input type="text" id="appCode" name="appCode" required>
+                </div>
+                <button id="verifyAppBtn">Verificar</button>
+            </div>
+            
+            <!-- Verify 2FA Form (Email Method) -->
+            <div id="verifyEmailForm" class="hidden">
+                <h3>Verificar Configuración de 2FA (Email)</h3>
+                <p>Se ha enviado un código de verificación a tu correo electrónico. Por favor, ingrésalo a continuación:</p>
+                <div class="form-group">
+                    <label for="emailCode">Código de Verificación</label>
+                    <input type="text" id="emailCode" name="emailCode" required>
+                </div>
+                <button id="verifyEmailBtn">Verificar</button>
+            </div>
+            
+            <!-- Disable 2FA Button -->
+            <div id="disable2FASection" class="hidden">
+                <h3>Desactivar 2FA</h3>
+                <p>La autenticación de dos factores está actualmente activada. Puedes desactivarla si lo deseas.</p>
+                <button id="disable2FABtn" class="btn-danger">Desactivar 2FA</button>
+            </div>
+        </div>
+        
+        <div id="response" class="response"></div>
+    </div>
+
+    <script>
+        // Check if user is logged in
+        document.addEventListener('DOMContentLoaded', function() {
+            const accessToken = localStorage.getItem('accessToken');
+            if (!accessToken) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            // Load user information
+            loadUserInfo();
+            
+            // Set up event listeners
+            document.getElementById('logoutBtn').addEventListener('click', logout);
+            document.getElementById('enable2FABtn').addEventListener('click', enable2FA);
+            document.getElementById('verifyAppBtn').addEventListener('click', function() {
+                verify2FA('app');
+            });
+            document.getElementById('verifyEmailBtn').addEventListener('click', function() {
+                verify2FA('email');
+            });
+            document.getElementById('disable2FABtn').addEventListener('click', disable2FA);
+        });
+        
+        // Load user information from API
+        async function loadUserInfo() {
+            try {
+                const accessToken = localStorage.getItem('accessToken');
+                
+                // Fetch user profile from API
+                const response = await fetch('http://localhost:3000/api/users/profile', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                // Handle token expiration
+                if (response.status === 401) {
+                    const refreshed = await refreshToken();
+                    if (refreshed) {
+                        // Try again with new token
+                        return loadUserInfo();
+                    } else {
+                        // Redirect to login if refresh failed
+                        logout();
+                        return;
+                    }
+                }
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Error al cargar información de usuario');
+                }
+                
+                const userData = await response.json();
+                
+                // Display user info
+                const userInfoDiv = document.getElementById('userInfo');
+                userInfoDiv.innerHTML = `
+                    <p><strong>Nombre:</strong> ${userData.nombre}</p>
+                    <p><strong>Email:</strong> ${userData.email}</p>
+                    <p><strong>Rol:</strong> ${userData.rol}</p>
+                `;
+                
+                // Check 2FA status
+                check2FAStatus(userData);
+            } catch (error) {
+                showResponse('error', `Error: ${error.message}`);
+            }
+        }
+        
+        // Check 2FA status
+        function check2FAStatus(userData) {
+            const twoFAStatusDiv = document.getElementById('twoFAStatus');
+            const enable2FAForm = document.getElementById('enable2FAForm');
+            const disable2FASection = document.getElementById('disable2FASection');
+            
+            if (userData.tiene_2fa) {
+                twoFAStatusDiv.innerHTML = `
+                    <p><strong>Estado de 2FA:</strong> Activado</p>
+                    <p><strong>Método:</strong> ${userData.metodo_2fa === 'app' ? 'Aplicación de Autenticación' : 'Correo Electrónico'}</p>
+                `;
+                enable2FAForm.classList.add('hidden');
+                disable2FASection.classList.remove('hidden');
+            } else {
+                twoFAStatusDiv.innerHTML = `
+                    <p><strong>Estado de 2FA:</strong> Desactivado</p>
+                    <p>Se recomienda activar la autenticación de dos factores para mayor seguridad.</p>
+                `;
+                enable2FAForm.classList.remove('hidden');
+                disable2FASection.classList.add('hidden');
+            }
+        }
+        
+        // Enable 2FA
+        async function enable2FA() {
+            try {
+                const method = document.getElementById('twoFAMethod').value;
+                const accessToken = localStorage.getItem('accessToken');
+                
+                // Make API call to enable 2FA
+                const response = await fetch('http://localhost:3000/api/auth/enable-2fa', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        method: method
+                    })
+                });
+                
+                // Handle token expiration
+                if (response.status === 401) {
+                    const refreshed = await refreshToken();
+                    if (refreshed) {
+                        // Try again with new token
+                        return enable2FA();
+                    } else {
+                        // Redirect to login if refresh failed
+                        logout();
+                        return;
+                    }
+                }
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Error al activar 2FA');
+                }
+                
+                const data = await response.json();
+                
+                // Hide enable form
+                document.getElementById('enable2FAForm').classList.add('hidden');
+                
+                if (method === 'app') {
+                    // Show QR code for app method
+                    document.getElementById('qrCode').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data.otpauth_url)}`;
+                    document.getElementById('verifyAppForm').classList.remove('hidden');
+                } else {
+                    // Show email verification form
+                    document.getElementById('verifyEmailForm').classList.remove('hidden');
+                }
+                
+                showResponse('success', `Configuración de 2FA iniciada. ${method === 'email' ? 'Se ha enviado un código a tu correo electrónico.' : 'Escanea el código QR con tu aplicación de autenticación.'}`);
+            } catch (error) {
+                showResponse('error', `Error: ${error.message}`);
+            }
+        }
+        
+        // Verify 2FA setup
+        async function verify2FA(method) {
+            try {
+                const codeInput = method === 'app' ? 'appCode' : 'emailCode';
+                const code = document.getElementById(codeInput).value;
+                const accessToken = localStorage.getItem('accessToken');
+                
+                // Validate code format
+                if (code.length !== 6 || isNaN(code)) {
+                    showResponse('error', 'Código de verificación inválido. Debe ser un número de 6 dígitos.');
+                    return;
+                }
+                
+                // Make API call to verify 2FA
+                const response = await fetch('http://localhost:3000/api/auth/verify-2fa', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        code: code,
+                        method: method
+                    })
+                });
+                
+                // Handle token expiration
+                if (response.status === 401) {
+                    const refreshed = await refreshToken();
+                    if (refreshed) {
+                        // Try again with new token
+                        return verify2FA(method);
+                    } else {
+                        // Redirect to login if refresh failed
+                        logout();
+                        return;
+                    }
+                }
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Error al verificar código 2FA');
+                }
+                
+                const data = await response.json();
+                
+                // Hide verification forms
+                document.getElementById('verifyAppForm').classList.add('hidden');
+                document.getElementById('verifyEmailForm').classList.add('hidden');
+                
+                // Show disable section
+                document.getElementById('disable2FASection').classList.remove('hidden');
+                
+                // Update status
+                document.getElementById('twoFAStatus').innerHTML = `
+                    <p><strong>Estado de 2FA:</strong> Activado</p>
+                    <p><strong>Método:</strong> ${method === 'app' ? 'Aplicación de Autenticación' : 'Correo Electrónico'}</p>
+                `;
+                
+                // Reload user info to get updated 2FA status
+                loadUserInfo();
+                
+                showResponse('success', 'Verificación de 2FA completada exitosamente. La autenticación de dos factores está ahora activada.');
+            } catch (error) {
+                showResponse('error', `Error: ${error.message}`);
+            }
+        }
+        
+        // Disable 2FA
+        async function disable2FA() {
+            try {
+                const accessToken = localStorage.getItem('accessToken');
+                
+                // Make API call to disable 2FA
+                const response = await fetch('http://localhost:3000/api/auth/disable-2fa', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                // Handle token expiration
+                if (response.status === 401) {
+                    const refreshed = await refreshToken();
+                    if (refreshed) {
+                        // Try again with new token
+                        return disable2FA();
+                    } else {
+                        // Redirect to login if refresh failed
+                        logout();
+                        return;
+                    }
+                }
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Error al desactivar 2FA');
+                }
+                
+                // Hide disable section
+                document.getElementById('disable2FASection').classList.add('hidden');
+                
+                // Show enable form
+                document.getElementById('enable2FAForm').classList.remove('hidden');
+                
+                // Update status
+                document.getElementById('twoFAStatus').innerHTML = `
+                    <p><strong>Estado de 2FA:</strong> Desactivado</p>
+                    <p>Se recomienda activar la autenticación de dos factores para mayor seguridad.</p>
+                `;
+                
+                // Reload user info to get updated 2FA status
+                loadUserInfo();
+                
+                showResponse('success', 'La autenticación de dos factores ha sido desactivada exitosamente.');
+            } catch (error) {
+                showResponse('error', `Error: ${error.message}`);
+            }
+        }
+        
+        // Refresh token
+        async function refreshToken() {
+            try {
+                const refreshToken = localStorage.getItem('refreshToken');
+                if (!refreshToken) return false;
+                
+                const response = await fetch('http://localhost:3000/api/auth/refresh-token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        refreshToken
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    localStorage.setItem('accessToken', data.accessToken);
+                    return true;
+                } else {
+                    return false;
+                }
+            } catch (error) {
+                console.error('Error refreshing token:', error);
+                return false;
+            }
+        }
+        
+        // Logout function
+        function logout() {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            window.location.href = 'login.html';
+        }
+        
+        // Show response message
+        function showResponse(type, message) {
+            const responseDiv = document.getElementById('response');
+            responseDiv.textContent = message;
+            responseDiv.className = `response ${type}`;
+            responseDiv.style.display = 'block';
+            
+            // Hide after 5 seconds
+            setTimeout(() => {
+                responseDiv.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
