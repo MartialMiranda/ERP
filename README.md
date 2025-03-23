@@ -2,6 +2,16 @@
 
 A secure REST API built with Node.js, Express, and PostgreSQL featuring modern authentication with 2FA support.
 
+## Prerequisites
+
+- Docker
+- Docker Compose
+
+OR
+
+- Node.js (v14 or higher)
+- PostgreSQL (v12 or higher)
+
 ## Features
 
 - Secure user authentication with JWT
@@ -49,7 +59,27 @@ EMAIL_PASSWORD=your_email_password
 EMAIL_FROM=no-reply@example.com
 ```
 
-## Database Setup
+## Running with Docker
+
+1. Clone the repository
+
+2. Create a `.env` file based on `.env.example`:
+
+```bash
+cp .env.example .env
+```
+
+3. Update the `.env` file with your actual values
+
+4. Build and start the containers:
+
+```bash
+docker-compose up -d
+```
+
+5. The application will be available at http://localhost:3000
+
+## Database Setup (Without Docker)
 
 1. Create the PostgreSQL database:
 
