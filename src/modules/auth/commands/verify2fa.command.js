@@ -2,8 +2,9 @@
  * Verify2FA Command - Handles verification of two-factor authentication setup
  */
 const speakeasy = require('speakeasy');
-const db = require('../../../config/database');
+const { db } = require('../../../config/database');
 const winston = require('winston');
+const { v4: uuidv4 } = require('uuid');
 
 // Create logger instance
 const logger = winston.createLogger({
@@ -31,6 +32,15 @@ if (process.env.NODE_ENV !== 'production') {
  */
 async function execute(data) {
   try {
+    logger.info(`Attempting to verify 2FA for user ID: ${data.userId}, method: ${data.method}`);
+    
+    // Log for debugging
+    logger.info(`Verification data: ${JSON.stringify({
+      userId: data.userId,
+      method: data.method,
+      codeLength: data.code ? data.code.length : 0
+    })}`);
+    
     // Verify user exists and has 2FA method set
     const user = await db.oneOrNone(
       'SELECT * FROM usuarios WHERE id = $1 AND metodo_2fa = $2',
@@ -38,8 +48,11 @@ async function execute(data) {
     );
     
     if (!user) {
+      logger.warn(`User not found or 2FA method not set: ID=${data.userId}, method=${data.method}`);
       throw new Error('User not found or 2FA method not set');
     }
+    
+    logger.info(`User found with ID: ${user.id}, method: ${user.metodo_2fa}`);
     
     let isValid = false;
     
@@ -50,9 +63,15 @@ async function execute(data) {
         secret: user.secreto_2fa,
         encoding: 'base32',
         token: data.code,
-        window: 1 // Allow 1 period before and after for clock drift
+        window: 2 // Allow 2 periods before and after for clock drift (increased tolerance)
       });
+      
+      logger.info(`App-based verification result: ${isValid ? 'valid' : 'invalid'}`);
+      
     } else if (data.method === 'email') {
+      // Log query for debugging
+      logger.info(`Querying for email verification code: user_id=${user.id}, code=${data.code}`);
+      
       // Verify email-based 2FA code
       const validCode = await db.oneOrNone(
         'SELECT * FROM autenticacion_2fa WHERE usuario_id = $1 AND codigo_2fa = $2 AND expira_en > NOW()',
@@ -61,15 +80,20 @@ async function execute(data) {
       
       isValid = !!validCode;
       
+      logger.info(`Email-based verification result: ${isValid ? 'valid' : 'invalid'}`);
+      
       // If code is valid, delete it to prevent reuse
-      if (isValid) {
+      if (isValid && validCode) {
         await db.none('DELETE FROM autenticacion_2fa WHERE id = $1', [validCode.id]);
+        logger.info(`Used 2FA code deleted: ID=${validCode.id}`);
       }
     } else {
+      logger.error(`Invalid 2FA method: ${data.method}`);
       throw new Error('Invalid 2FA method');
     }
     
     if (!isValid) {
+      logger.warn(`Invalid verification code for user ID: ${user.id}`);
       throw new Error('Invalid verification code');
     }
     
@@ -87,6 +111,12 @@ async function execute(data) {
     };
   } catch (error) {
     logger.error(`Error in verify2FA command: ${error.message}`);
+    
+    // Add stack trace for debugging
+    if (process.env.NODE_ENV !== 'production') {
+      logger.error(`Stack trace: ${error.stack}`);
+    }
+    
     throw error;
   }
 }

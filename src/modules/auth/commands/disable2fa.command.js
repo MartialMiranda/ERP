@@ -1,8 +1,9 @@
 /**
  * Disable2FA Command - Handles disabling two-factor authentication for users
  */
-const db = require('../../../config/database');
+const { db } = require('../../../config/database');
 const winston = require('winston');
+const { v4: uuidv4 } = require('uuid');
 
 // Create logger instance
 const logger = winston.createLogger({

@@ -1,46 +1,15 @@
-const pgp = require('pg-promise')();
-const winston = require('winston');
+/**
+ * Database configuration 
+ * This file is now importing the centralized database configuration from infrastructure
+ * to maintain consistency across the application.
+ */
 
-// Create logger instance
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'logs/combined.log' })
-  ]
-});
+// Import database configuration from infrastructure layer
+const { pgDb, knex, logger } = require('../infrastructure/database/config');
 
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: winston.format.simple()
-  }));
-}
-
-// Database connection configuration
-const connection = {
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  max: 30 // Maximum number of connections in the pool
+// Export the database instance and knex instance to be used across the application
+module.exports = {
+  db: pgDb,     // For pg-promise queries (read operations in CQRS)
+  knex,         // For knex queries (write operations in CQRS)
+  logger
 };
-
-// Create the database instance
-const db = pgp(connection);
-
-// Test the connection
-db.connect()
-  .then(obj => {
-    logger.info('Database connection established successfully');
-    obj.done(); // Release the connection
-  })
-  .catch(error => {
-    logger.error('Error connecting to database:', error);
-  });
-
-module.exports = db;

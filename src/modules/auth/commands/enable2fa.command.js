@@ -2,9 +2,10 @@
  * Enable2FA Command - Handles enabling two-factor authentication for users
  */
 const speakeasy = require('speakeasy');
-const db = require('../../../config/database');
+const { db } = require('../../../config/database');
 const nodemailer = require('nodemailer');
 const winston = require('winston');
+const { v4: uuidv4 } = require('uuid');
 
 // Create logger instance
 const logger = winston.createLogger({
@@ -64,6 +65,7 @@ const sendEmailCode = async (email, code) => {
       text: `Your verification code is: ${code}. It will expire in 10 minutes.`,
       html: `<p>Your verification code is: <strong>${code}</strong></p><p>It will expire in 10 minutes.</p>`
     });
+    logger.info(`2FA email sent successfully to: ${email}`);
     return true;
   } catch (error) {
     logger.error(`Error sending 2FA email: ${error.message}`);
@@ -78,12 +80,17 @@ const sendEmailCode = async (email, code) => {
  */
 async function execute(data) {
   try {
+    logger.info(`Starting 2FA enablement for user ID: ${data.userId}, method: ${data.method}`);
+    
     // Verify user exists
     const user = await db.oneOrNone('SELECT * FROM usuarios WHERE id = $1', [data.userId]);
     
     if (!user) {
+      logger.warn(`User not found for 2FA enablement: ID=${data.userId}`);
       throw new Error('User not found');
     }
+    
+    logger.info(`Found user for 2FA enablement: ID=${user.id}, email=${user.email}`);
     
     // Handle different 2FA methods
     if (data.method === 'app') {
@@ -99,6 +106,8 @@ async function execute(data) {
         [secret.base32, 'app', user.id]
       );
       
+      logger.info(`App-based 2FA setup successful for user ID: ${user.id}`);
+      
       // Return the secret and QR code for the user to scan
       return {
         secret: secret.base32,
@@ -113,11 +122,33 @@ async function execute(data) {
       const expiresAt = new Date();
       expiresAt.setMinutes(expiresAt.getMinutes() + 10);
       
-      // Store the code in the database
+      // Generate UUID for the authentication record
+      const authId = uuidv4();
+      
+      logger.info(`Email 2FA setup: Generated code for user ID: ${user.id}, expires at: ${expiresAt.toISOString()}`);
+      
+      // First, clean up any existing codes for this user to prevent conflicts
+      await db.none('DELETE FROM autenticacion_2fa WHERE usuario_id = $1', [user.id]);
+      
+      // Store the code in the database with UUID
       await db.none(
-        'INSERT INTO autenticacion_2fa (usuario_id, codigo_2fa, expira_en) VALUES ($1, $2, $3)',
-        [user.id, code, expiresAt]
+        'INSERT INTO autenticacion_2fa (id, usuario_id, codigo_2fa, expira_en) VALUES ($1, $2, $3, $4)',
+        [authId, user.id, code, expiresAt]
       );
+      
+      logger.info(`Email 2FA: Code stored in database for user ID: ${user.id}`);
+      
+      // For debugging - verify the code was stored correctly
+      const verifyCode = await db.oneOrNone(
+        'SELECT * FROM autenticacion_2fa WHERE usuario_id = $1',
+        [user.id]
+      );
+      
+      if (verifyCode) {
+        logger.info(`Verification of stored code: ID=${verifyCode.id}, Code=${verifyCode.codigo_2fa}, Expires=${verifyCode.expira_en}`);
+      } else {
+        logger.warn(`Could not verify stored code for user ID: ${user.id}`);
+      }
       
       // Update user with 2FA method (not enabled yet until verified)
       await db.none(
@@ -129,18 +160,28 @@ async function execute(data) {
       const emailSent = await sendEmailCode(user.email, code);
       
       if (!emailSent) {
+        logger.error(`Failed to send verification email to: ${user.email}`);
         throw new Error('Failed to send verification email');
       }
+      
+      logger.info(`Email-based 2FA setup successful for user ID: ${user.id}`);
       
       return {
         emailSent: true,
         verified: false
       };
     } else {
+      logger.error(`Invalid 2FA method requested: ${data.method}`);
       throw new Error('Invalid 2FA method');
     }
   } catch (error) {
     logger.error(`Error in enable2FA command: ${error.message}`);
+    
+    // Add stack trace for debugging
+    if (process.env.NODE_ENV !== 'production') {
+      logger.error(`Stack trace: ${error.stack}`);
+    }
+    
     throw error;
   }
 }

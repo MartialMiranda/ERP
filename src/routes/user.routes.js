@@ -4,7 +4,7 @@
  */
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const db = require('../config/database');
+const { db } = require('../config/database');
 const { verifyToken, checkRole } = require('../middleware/auth.middleware');
 const winston = require('winston');
 
@@ -145,7 +145,7 @@ router.get('/', [verifyToken, checkRole(['admin'])], async (req, res) => {
 router.delete('/:id', [verifyToken, checkRole(['admin'])], async (req, res) => {
   try {
     // Prevent admin from deleting themselves
-    if (parseInt(req.params.id) === req.user.id) {
+    if (req.params.id === req.user.id) {
       return res.status(400).json({ message: 'Cannot delete your own account' });
     }
     

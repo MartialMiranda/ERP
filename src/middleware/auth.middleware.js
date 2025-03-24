@@ -3,7 +3,7 @@
  * Verifies JWT tokens and handles role-based access control
  */
 const jwt = require('jsonwebtoken');
-const db = require('../config/database');
+const { db } = require('../config/database');
 const winston = require('winston');
 
 // Create logger instance

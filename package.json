@@ -5,13 +5,24 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "jest"
+    "test": "mocha 'test/**/*.test.js'",
+    "test:watch": "mocha --watch 'test/**/*.test.js'",
+    "test:coverage": "nyc mocha 'test/**/*.test.js'",
+    "migrate": "knex migrate:latest",
+    "migrate:rollback": "knex migrate:rollback",
+    "migrate:make": "knex migrate:make",
+    "seed": "knex seed:run",
+    "seed:make": "knex seed:make",
+    "db:setup": "knex migrate:latest && knex seed:run",
+    "db:init": "node src/infrastructure/database/initDatabase.js",
+    "start:with-db": "npm run db:init && npm start"
   },
   "author": "",
   "license": "ISC",
   "description": "REST API with Express and PostgreSQL featuring secure authentication with 2FA",
   "dependencies": {
     "bcrypt": "^5.1.1",
+    "compression": "^1.8.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.21.2",
@@ -20,16 +31,23 @@
     "helmet": "^7.1.0",
     "ioredis": "^5.6.0",
     "jsonwebtoken": "^9.0.2",
+    "knex": "^3.1.0",
     "morgan": "^1.10.0",
     "nodemailer": "^6.9.7",
+    "pg": "^8.14.1",
     "pg-promise": "^11.11.0",
     "speakeasy": "^2.0.0",
     "uuid": "^9.0.1",
     "winston": "^3.11.0"
   },
   "devDependencies": {
+    "@faker-js/faker": "^9.6.0",
+    "chai": "^4.3.10",
     "jest": "^29.7.0",
+    "mocha": "^10.2.0",
     "nodemon": "^3.0.2",
+    "nyc": "^15.1.0",
+    "sinon": "^17.0.1",
     "supertest": "^6.3.3"
   }
 }
