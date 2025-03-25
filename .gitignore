@@ -6,10 +6,12 @@ yarn-error.log
 
 # Environment variables
 .env
+.env.docker
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+README.md
 
 # Logs
 logs/

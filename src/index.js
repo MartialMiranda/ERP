@@ -1,16 +1,34 @@
-// Importar la aplicación Express configurada
-const { app, logger } = require('./app');
+/**
+ * Punto de entrada principal del sistema ERP
+ * Inicializa la aplicación y configura el manejo de errores globales
+ */
+require('dotenv').config();
+const app = require('./app');
+const logger = require('./utils/logger');
 
-// Iniciar el servidor
+// Importar conexión a la base de datos
+const db = require('./config/database');
+
+// Iniciar servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  logger.info(`Servidor ejecutándose en el puerto ${PORT} en modo ${process.env.NODE_ENV || 'development'}`);
-  console.log(`Servidor ejecutándose en el puerto ${PORT} en modo ${process.env.NODE_ENV || 'development'}`);
+  logger.info(`Servidor ejecutándose en puerto ${PORT} en modo ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Servidor ejecutándose en puerto ${PORT} en modo ${process.env.NODE_ENV || 'development'}`);
 });
 
 // Manejar rechazos de promesas no controlados
 process.on('unhandledRejection', (err) => {
-  logger.error('¡RECHAZO NO MANEJADO! Cerrando...');
+  logger.error('RECHAZO NO CONTROLADO! Cerrando aplicación...');
   logger.error(err.name, err.message);
-  process.exit(1);
+  console.error('Error no controlado:', err);
+});
+
+// Manejar excepciones no capturadas
+process.on('uncaughtException', (err) => {
+  logger.error('EXCEPCIÓN NO CAPTURADA! Cerrando aplicación...');
+  logger.error(err.name, err.message);
+  
+  app.close(() => {
+    process.exit(1);
+  });
 });

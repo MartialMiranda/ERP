@@ -1,56 +1,78 @@
 services:
+  # Servicio de la aplicación Node.js
   app:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        NODE_ENV: ${NODE_ENV:-development}
     container_name: erp-app
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
     depends_on:
       - postgres
     environment:
+      # Server Configuration
       - PORT=3000
-      - NODE_ENV=development
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT}
-      - DB_NAME=${DB_NAME}
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-      - JWT_REFRESH_EXPIRES_IN=${JWT_REFRESH_EXPIRES_IN}
-      - EMAIL_HOST=${EMAIL_HOST}
-      - EMAIL_PORT=${EMAIL_PORT}
-      - EMAIL_USER=${EMAIL_USER}
-      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
-      - EMAIL_FROM=${EMAIL_FROM}
-      - 2FA_APP_NAME=$${2FA_APP_NAME}
+      - NODE_ENV=${NODE_ENV:-development}
+      
+      # Database Configuration - Estos valores sobrescribirán los del archivo .env
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-erp_proyecto}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-root}
+      
+      # JWT Configuration
+      - JWT_SECRET=${JWT_SECRET:-default_jwt_secret_change_me}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-1h}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-default_refresh_secret_change_me}
+      - JWT_REFRESH_EXPIRES_IN=${JWT_REFRESH_EXPIRES_IN:-7d}
+      
+      # Email Configuration
+      - EMAIL_HOST=${EMAIL_HOST:-smtp.example.com}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - EMAIL_USER=${EMAIL_USER:-user@example.com}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD:-password}
+      - EMAIL_FROM=${EMAIL_FROM:-no-reply@example.com}
+      
+      # 2FA Configuration
+      - 2FA_APP_NAME=$${2FA_APP_NAME:-ERP Sistema}
+      
+      # DB Management Flags
+      - RESET_DB=${RESET_DB:-false}
+      - INIT_DB=${INIT_DB:-false}
+      - RUN_SEEDS=${RUN_SEEDS:-true}
     volumes:
       - ./logs:/usr/src/app/logs
+      # Volúmenes opcionales para desarrollo (comenta para producción)
+      - ./src:/usr/src/app/src
+      # - ./package.json:/usr/src/app/package.json
+      # - ./knexfile.js:/usr/src/app/knexfile.js
     networks:
       - erp-network
 
+  # Servicio de base de datos PostgreSQL
   postgres:
     image: postgres:15-alpine
     container_name: erp-postgres
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "${DB_PORT_EXTERNAL:-5432}:5432"
     environment:
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-root}
+      - POSTGRES_DB=${DB_NAME:-erp_proyecto}
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./src/config/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     networks:
       - erp-network
 
 volumes:
   postgres-data:
+    name: erp-postgres-data
 
 networks:
   erp-network:
-    driver: bridge
+    external: true

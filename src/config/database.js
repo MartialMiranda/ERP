@@ -1,15 +1,15 @@
 /**
- * Database configuration 
- * This file is now importing the centralized database configuration from infrastructure
- * to maintain consistency across the application.
+ * Configuración de Base de Datos 
+ * Este archivo importa la configuración centralizada de la capa de infraestructura
+ * para mantener consistencia en toda la aplicación.
  */
 
-// Import database configuration from infrastructure layer
+// Importar configuración de base de datos desde la capa de infraestructura
 const { pgDb, knex, logger } = require('../infrastructure/database/config');
 
-// Export the database instance and knex instance to be used across the application
+// Exportar las instancias para uso en toda la aplicación
 module.exports = {
-  db: pgDb,     // For pg-promise queries (read operations in CQRS)
-  knex,         // For knex queries (write operations in CQRS)
+  db: pgDb,     // Para consultas pg-promise (operaciones de lectura en CQRS)
+  knex,         // Para consultas knex (operaciones de escritura en CQRS)
   logger
 };

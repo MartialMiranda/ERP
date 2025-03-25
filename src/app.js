@@ -1,38 +1,14 @@
 /**
- * Aplicación principal del ERP
- * Integra todos los módulos y middleware necesarios
+ * Aplicación principal del sistema ERP
+ * Configura middleware, rutas y servicios
  */
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const helmet = require('helmet');
 const compression = require('compression');
-const winston = require('winston');
 const { rateLimit } = require('express-rate-limit');
-const { verifyToken } = require('./middleware/auth.middleware');
-
-// Importar conexión a la base de datos
-const db = require('./config/database');
-
-// Configuración del logger
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'logs/combined.log' })
-  ]
-});
-
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: winston.format.simple()
-  }));
-}
+const logger = require('./utils/logger');
 
 // Importar rutas
 const authRoutes = require('./routes/auth.routes');
@@ -54,34 +30,45 @@ app.use(compression()); // Compresión de respuestas
 app.use(express.json()); // Parseo de JSON
 app.use(express.urlencoded({ extended: true })); // Parseo de formularios
 
-// HTTP request logging
+// Configuración de logs HTTP
 if (process.env.NODE_ENV === 'production') {
-  app.use(morgan('combined')); // Logging detallado en producción
+  app.use(morgan('combined')); // Logs detallados en producción
 } else {
-  app.use(morgan('dev')); // Logging simplificado en desarrollo
+  app.use(morgan('dev')); // Logs simplificados en desarrollo
 }
 
-// Rate limiting
+// Configuración de límites de velocidad
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
   max: 100, // Limitar cada IP a 100 solicitudes por ventana
   standardHeaders: true,
   legacyHeaders: false,
-  message: 'Demasiadas solicitudes desde esta IP, intente nuevamente después de 15 minutos'
+  message: 'Demasiadas solicitudes desde esta IP, inténtelo de nuevo después de 15 minutos'
 });
 app.use('/api/', limiter);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'UP', timestamp: new Date() });
+// Ruta principal - página de bienvenida
+app.get('/', (req, res) => {
+  res.status(200).json({
+    mensaje: 'Bienvenido al Sistema ERP',
+    version: '1.0.0',
+    documentacionApi: '/api/docs',
+    estadoApi: '/api/status',
+    salud: '/health'
+  });
 });
 
-// Ruta de estado
+// Endpoint de verificación de salud
+app.get('/health', (req, res) => {
+  res.status(200).json({ estado: 'ACTIVO', timestamp: new Date() });
+});
+
+// Endpoint de estado de la API
 app.get('/api/status', (req, res) => {
   res.json({
-    status: 'OK',
+    estado: 'OK',
     timestamp: new Date(),
-    environment: process.env.NODE_ENV || 'development'
+    entorno: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -99,10 +86,10 @@ app.use('/api/reportes', reportesRoutes);
 app.use('/api/docs', express.static('docs/api'));
 
 // Middleware para manejo de errores 404
-app.use((req, res, next) => {
+app.use((req, res) => {
   res.status(404).json({
-    error: 'Not Found',
-    message: `La ruta ${req.originalUrl} no existe en este servidor`
+    error: 'No Encontrado',
+    mensaje: `La ruta ${req.originalUrl} no existe en este servidor`
   });
 });
 
@@ -112,11 +99,11 @@ app.use((err, req, res, next) => {
   
   res.status(err.status || 500).json({
     error: {
-      message: err.message || 'Error Interno del Servidor',
-      status: err.status || 500
+      mensaje: err.message || 'Error Interno del Servidor',
+      estado: err.status || 500
     }
   });
 });
 
-// Exportar la aplicación para su uso en index.js y para pruebas
-module.exports = { app, logger };
+// Exportar la aplicación Express
+module.exports = app;
