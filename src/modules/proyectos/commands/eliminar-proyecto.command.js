@@ -51,7 +51,7 @@ async function execute(proyectoId, usuarioId) {
       // 1. Eliminar tareas asociadas al proyecto (a través de equipos)
       await t.none(`
         DELETE FROM tareas 
-        WHERE equipo_id IN (SELECT id FROM equipos WHERE proyecto_id = $1)
+        WHERE id IN (SELECT id FROM equipos WHERE id = $1)
       `, [proyectoId]);
       
       // 2. Eliminar registros de kanban_tareas asociados al proyecto
@@ -59,33 +59,33 @@ async function execute(proyectoId, usuarioId) {
         DELETE FROM kanban_tareas 
         WHERE tarea_id IN (
           SELECT t.id FROM tareas t
-          JOIN equipos e ON t.equipo_id = e.id
-          WHERE e.proyecto_id = $1
+          JOIN equipos e ON t.id = e.id
+          WHERE e.id = $1
         )
       `, [proyectoId]);
       
       // 3. Eliminar recursos asociados al proyecto
       await t.none(`
         DELETE FROM recursos 
-        WHERE proyecto_id = $1
+        WHERE id = $1
       `, [proyectoId]);
       
       // 4. Eliminar miembros de equipos asociados al proyecto
       await t.none(`
         DELETE FROM equipo_usuarios 
-        WHERE equipo_id IN (SELECT id FROM equipos WHERE proyecto_id = $1)
+        WHERE id IN (SELECT id FROM equipos WHERE id = $1)
       `, [proyectoId]);
       
       // 5. Eliminar equipos asociados al proyecto
       await t.none(`
         DELETE FROM equipos 
-        WHERE proyecto_id = $1
+        WHERE id = $1
       `, [proyectoId]);
       
       // 6. Eliminar reportes asociados al proyecto
       await t.none(`
         DELETE FROM reportes_progreso 
-        WHERE proyecto_id = $1
+        WHERE id = $1
       `, [proyectoId]);
       
       // 7. Finalmente, eliminar el proyecto

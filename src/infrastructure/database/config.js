@@ -1,62 +1,43 @@
 /**
- * Database configuration integration for migrations/seeds and application.
- * This follows CQRS principles by separating the configuration for different database operations.
+ * Configuración de base de datos para migraciones/semillas y aplicación.
+ * Sigue principios CQRS separando la configuración para diferentes operaciones.
  */
 const knex = require('knex');
 const knexConfig = require('../../../knexfile');
 const pgp = require('pg-promise')();
-const winston = require('winston');
+const logger = require('../../utils/logger');
 
-// Create logger instance
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'logs/combined.log' })
-  ]
-});
-
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: winston.format.simple()
-  }));
-}
-
-// Environment-based configuration
+// Configuración basada en entorno
 const environment = process.env.NODE_ENV || 'development';
 
-// Knex instance (for migrations and query building)
+// Instancia Knex (para migraciones y construcción de consultas)
 const knexInstance = knex(knexConfig[environment]);
 
-// Pg-promise instance (for application queries)
+// Instancia pg-promise (para consultas de aplicación)
 const connection = {
   host: process.env.DB_HOST || 'localhost',
   port: process.env.DB_PORT || 5432,
   database: process.env.DB_NAME || 'erp_proyecto',
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
-  max: 30 // Maximum number of connections in the pool
 };
 
-// Create the database instance
+// Crear la instancia de la base de datos
 const pgDb = pgp(connection);
 
-// Test the connection
+// Manejar eventos de conexión
 pgDb.connect()
   .then(obj => {
-    logger.info('Database connection established successfully');
-    obj.done(); // Release the connection
+    logger.info('Conexión a la base de datos establecida correctamente');
+    obj.done(); // Liberar el cliente de conexión
   })
   .catch(error => {
-    logger.error('Error connecting to database:', error);
+    logger.error(`Error al conectar a la base de datos: ${error.message}`);
   });
 
+// Exportar las instancias para uso en toda la aplicación
 module.exports = {
-  knex: knexInstance,
-  pgDb,
+  pgDb,     // Para consultas pg-promise (operaciones de lectura en CQRS)
+  knex: knexInstance, // Para consultas knex (operaciones de escritura en CQRS)
   logger
 };

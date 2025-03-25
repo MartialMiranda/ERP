@@ -39,10 +39,10 @@ async function execute(proyectoId, datosActualizados, usuarioId) {
     const proyecto = await db.oneOrNone(`
       SELECT p.* 
       FROM proyectos p
-      LEFT JOIN equipo_usuarios eu ON eu.equipo_id IN (
-        SELECT id FROM equipos WHERE proyecto_id = p.id
+      LEFT JOIN equipo_usuarios eu ON eu.id IN (
+        SELECT id FROM equipos WHERE id = p.id
       )
-      WHERE p.id = $1 AND (p.creado_por = $2 OR eu.usuario_id = $2)
+      WHERE p.id = $1 AND (p.creado_por = $2 OR eu.id = $2)
     `, [proyectoId, usuarioId]);
     
     if (!proyecto) {
