@@ -19,6 +19,7 @@ const equiposRoutes = require('./routes/equipos.routes');
 const recursosRoutes = require('./routes/recursos.routes');
 const asignacionesRoutes = require('./routes/asignaciones.routes');
 const reportesRoutes = require('./routes/reportes.routes');
+const kanbanRoutes = require('./routes/kanban.routes');
 
 // Crear la aplicación Express
 const app = express();
@@ -81,6 +82,7 @@ app.use('/api/equipos', equiposRoutes);
 app.use('/api/recursos', recursosRoutes);
 app.use('/api/asignaciones', asignacionesRoutes);
 app.use('/api/reportes', reportesRoutes);
+app.use('/api/kanban', kanbanRoutes);
 
 // Ruta para documentación del API (si existe)
 app.use('/api/docs', express.static('docs/api'));
