@@ -11,7 +11,7 @@ const db = require('./config/database');
 
 // Iniciar servidor
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`Servidor ejecutándose en puerto ${PORT} en modo ${process.env.NODE_ENV || 'development'}`);
   console.log(`Servidor ejecutándose en puerto ${PORT} en modo ${process.env.NODE_ENV || 'development'}`);
 });
@@ -26,9 +26,9 @@ process.on('unhandledRejection', (err) => {
 // Manejar excepciones no capturadas
 process.on('uncaughtException', (err) => {
   logger.error('EXCEPCIÓN NO CAPTURADA! Cerrando aplicación...');
-  logger.error(err.name, err.message);
+  logger.error(err);
   
-  app.close(() => {
+  server.close(() => {
     process.exit(1);
   });
 });

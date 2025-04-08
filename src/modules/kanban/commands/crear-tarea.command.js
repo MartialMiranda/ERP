@@ -48,9 +48,9 @@ async function execute(tarea, columnaId, usuarioId) {
     const tieneAcceso = await db.oneOrNone(`
       SELECT 1
       FROM proyectos p
-      LEFT JOIN equipos e ON e.id = p.id
-      LEFT JOIN equipo_usuarios eu ON eu.id = e.id
-      WHERE p.id = $1 AND (p.creado_por = $2 OR eu.id = $2)
+      LEFT JOIN equipos e ON e.proyecto_id = p.id
+      LEFT JOIN equipo_usuarios eu ON eu.equipo_id = e.id
+      WHERE p.id = $1 AND (p.creado_por = $2 OR eu.usuario_id = $2)
       LIMIT 1
     `, [columna.proyecto_id, usuarioId]);
     
@@ -80,9 +80,9 @@ async function execute(tarea, columnaId, usuarioId) {
         await t.none(`
           INSERT INTO tareas (
             id, titulo, descripcion, prioridad, estado, fecha_vencimiento, proyecto_id,
-            asignado_a, creado_en, actualizado_en
+            asignado_a, creado_por, creado_en, actualizado_en
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
           )
         `, [
           tareaId, 

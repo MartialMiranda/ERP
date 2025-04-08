@@ -38,9 +38,9 @@ async function execute(proyectoId, usuarioId) {
     const tieneAcceso = await db.oneOrNone(`
       SELECT 1
       FROM proyectos p
-      LEFT JOIN equipos e ON e.id = p.id
-      LEFT JOIN equipo_usuarios eu ON eu.id = e.id
-      WHERE p.id = $1 AND (p.creado_por = $2 OR eu.id = $2)
+      LEFT JOIN equipos e ON e.proyecto_id = p.id
+      LEFT JOIN equipo_usuarios eu ON eu.equipo_id = e.id
+      WHERE p.id = $1 AND (p.creado_por = $2 OR eu.usuario_id = $2)
       LIMIT 1
     `, [proyectoId, usuarioId]);
     
@@ -64,12 +64,12 @@ async function execute(proyectoId, usuarioId) {
     
     // Obtener todas las tareas de las columnas en una sola consulta para optimizar
     const todasLasTareas = await db.manyOrNone(`
-      SELECT kt.*, kt.id, t.titulo, t.descripcion, t.prioridad, t.estado, t.fecha_vencimiento,
+      SELECT kt.*, t.titulo, t.descripcion, t.prioridad, t.estado, t.fecha_vencimiento,
              u.nombre as asignado_nombre, u.email as asignado_email
       FROM kanban_tareas kt
-      JOIN tareas t ON kt.id = t.id
+      JOIN tareas t ON kt.tarea_id = t.id
       LEFT JOIN usuarios u ON t.asignado_a = u.id
-      WHERE kt.id IN (${columnas.map((_, i) => `$${i + 2}`).join(',')})
+      WHERE kt.columna_id IN (${columnas.map((_, i) => `$${i + 2}`).join(',')})
       ORDER BY kt.posicion ASC
     `, [proyectoId, ...columnas.map(c => c.id)]);
     

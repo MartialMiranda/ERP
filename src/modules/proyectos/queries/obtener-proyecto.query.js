@@ -38,9 +38,10 @@ async function execute(proyectoId, usuarioId) {
     const tieneAcceso = await db.oneOrNone(`
       SELECT 1
       FROM proyectos p
-      LEFT JOIN equipos e ON e.id = p.id
-      LEFT JOIN equipo_usuarios eu ON eu.id = e.id
-      WHERE p.id = $1 AND (p.creado_por = $2 OR eu.id = $2)
+      LEFT JOIN tareas t ON t.proyecto_id = p.id
+      LEFT JOIN equipo_usuarios eu ON eu.usuario_id = $2
+      LEFT JOIN equipos e ON e.id = eu.equipo_id
+      WHERE p.id = $1 AND (p.creado_por = $2 OR eu.usuario_id = $2)
       LIMIT 1
     `, [proyectoId, usuarioId]);
     
@@ -66,10 +67,15 @@ async function execute(proyectoId, usuarioId) {
     
     // Obtener equipos asociados al proyecto
     const equipos = await db.manyOrNone(`
-      SELECT e.*, COUNT(eu.id) as total_miembros
+      SELECT DISTINCT e.*, COUNT(eu.id) as total_miembros
       FROM equipos e
-      LEFT JOIN equipo_usuarios eu ON e.id = eu.id
-      WHERE e.id = $1
+      JOIN equipo_usuarios eu ON eu.equipo_id = e.id
+      JOIN tareas t ON t.proyecto_id = $1
+      WHERE e.id IN (
+        SELECT eu2.equipo_id 
+        FROM equipo_usuarios eu2
+        WHERE eu2.equipo_id = e.id
+      )
       GROUP BY e.id
     `, [proyectoId]);
     
@@ -82,8 +88,7 @@ async function execute(proyectoId, usuarioId) {
         COUNT(CASE WHEN t.estado = 'completada' THEN 1 END) as tareas_completadas,
         COUNT(CASE WHEN t.estado = 'cancelada' THEN 1 END) as tareas_canceladas
       FROM tareas t
-      JOIN equipos e ON t.id = e.id
-      WHERE e.id = $1
+      WHERE t.proyecto_id = $1
     `, [proyectoId]);
     
     // Calcular el progreso general del proyecto
@@ -92,12 +97,12 @@ async function execute(proyectoId, usuarioId) {
     
     // Obtener recursos asociados al proyecto
     const recursos = await db.manyOrNone(`
-      SELECT * FROM recursos WHERE id = $1
+      SELECT * FROM recursos WHERE proyecto_id = $1
     `, [proyectoId]);
     
     // Obtener columnas kanban del proyecto
     const columnasKanban = await db.manyOrNone(`
-      SELECT * FROM kanban_columnas WHERE id = $1 ORDER BY posicion ASC
+      SELECT * FROM kanban_columnas WHERE proyecto_id = $1 ORDER BY posicion ASC
     `, [proyectoId]);
     
     // Construir el objeto de respuesta

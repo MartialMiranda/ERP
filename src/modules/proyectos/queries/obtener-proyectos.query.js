@@ -42,10 +42,10 @@ async function execute(usuarioId, filtros = {}) {
          COUNT(CASE WHEN t.estado = 'completada' THEN 1 END) OVER (PARTITION BY p.id) as tareas_completadas
   FROM proyectos p
   LEFT JOIN usuarios u ON p.creado_por = u.id
-  LEFT JOIN equipos e ON e.id = p.id
-  LEFT JOIN equipo_usuarios eu ON eu.id = e.id
-  LEFT JOIN tareas t ON t.id = e.id
-  WHERE p.creado_por = $1 OR eu.id = $1
+  LEFT JOIN tareas t ON t.proyecto_id = p.id
+  LEFT JOIN equipo_usuarios eu ON eu.usuario_id = $1
+  LEFT JOIN equipos e ON e.id = eu.equipo_id
+  WHERE p.creado_por = $1 OR eu.usuario_id = $1
     `;
     
     const queryParams = [usuarioId];
@@ -121,9 +121,9 @@ async function execute(usuarioId, filtros = {}) {
     let countQuery = `
       SELECT COUNT(DISTINCT p.id) 
       FROM proyectos p
-      LEFT JOIN equipos e ON e.id = p.id
-      LEFT JOIN equipo_usuarios eu ON eu.id = e.id
-      WHERE p.creado_por = $1 OR eu.id = $1
+      LEFT JOIN equipo_usuarios eu ON eu.usuario_id = $1
+      LEFT JOIN equipos e ON e.id = eu.equipo_id
+      WHERE p.creado_por = $1 OR eu.usuario_id = $1
     `;
     
     // Aplicar los mismos filtros a la consulta de conteo
@@ -140,10 +140,15 @@ async function execute(usuarioId, filtros = {}) {
     const proyectosConDetalles = await Promise.all(proyectos.map(async (proyecto) => {
       // Obtener los equipos del proyecto
       const equipos = await db.manyOrNone(`
-        SELECT e.*, COUNT(eu.id) as total_miembros
+        SELECT DISTINCT e.*, COUNT(eu.id) as total_miembros
         FROM equipos e
-        LEFT JOIN equipo_usuarios eu ON e.id = eu.id
-        WHERE e.id = $1
+        JOIN equipo_usuarios eu ON eu.equipo_id = e.id
+        JOIN tareas t ON t.proyecto_id = $1
+        WHERE e.id IN (
+          SELECT equipo_id 
+          FROM equipo_usuarios 
+          WHERE equipo_id = e.id
+        )
         GROUP BY e.id
       `, [proyecto.id]);
       

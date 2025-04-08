@@ -67,10 +67,7 @@ exports.seed = async function(knex) {
     });
   }
   
-  await knex('usuarios').insert(usersToInsert);
-  
-  console.log(`Creados ${usersToInsert.length} usuarios con contraseña: '${plainPassword}'`);
-  
+  await knex('usuarios').insert(usersToInsert);  
   // Return the user IDs for reference in other seeds
   return { adminId, userIds };
 };
