@@ -80,9 +80,9 @@ async function execute(tarea, columnaId, usuarioId) {
         await t.none(`
           INSERT INTO tareas (
             id, titulo, descripcion, prioridad, estado, fecha_vencimiento, proyecto_id,
-            asignado_a, creado_por, creado_en, actualizado_en
+            asignado_a, creado_en, actualizado_en
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
           )
         `, [
           tareaId, 
@@ -93,7 +93,6 @@ async function execute(tarea, columnaId, usuarioId) {
           tarea.fecha_vencimiento || null, 
           columna.proyecto_id,
           tarea.asignado_a || null,           
-          usuarioId, 
           new Date(), 
           new Date()
         ]);

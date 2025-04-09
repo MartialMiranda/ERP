@@ -75,12 +75,9 @@ async function execute(tarea, usuarioId) {
       descripcion: tarea.descripcion || null,
       estado: tarea.estado || 'pendiente',
       prioridad: tarea.prioridad || 'media',
-      fecha_inicio: tarea.fecha_inicio || new Date(),
       fecha_vencimiento: tarea.fecha_vencimiento || null,
       proyecto_id: equipo.proyecto_id,
-      creado_por: usuarioId,
       asignado_a: tarea.asignado_a || null,
-      etiquetas: tarea.etiquetas || [],
       creado_en: new Date(),
       actualizado_en: new Date()
     };
@@ -89,10 +86,10 @@ async function execute(tarea, usuarioId) {
     await db.none(`
       INSERT INTO tareas (
         id, titulo, descripcion, estado, prioridad, 
-        fecha_inicio, fecha_vencimiento, proyecto_id, 
-        creado_por, asignado_a, etiquetas, creado_en, actualizado_en
+        fecha_vencimiento, proyecto_id, 
+        asignado_a, creado_en, actualizado_en
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
       )
     `, [
       tareaData.id, 
@@ -100,12 +97,9 @@ async function execute(tarea, usuarioId) {
       tareaData.descripcion, 
       tareaData.estado, 
       tareaData.prioridad,
-      tareaData.fecha_inicio, 
       tareaData.fecha_vencimiento, 
       tareaData.proyecto_id,
-      tareaData.creado_por, 
       tareaData.asignado_a, 
-      tareaData.etiquetas, 
       tareaData.creado_en, 
       tareaData.actualizado_en
     ]);
@@ -130,17 +124,15 @@ async function execute(tarea, usuarioId) {
       // Insertar en tabla kanban_tareas
       await db.none(`
         INSERT INTO kanban_tareas (
-          id, tarea_id, columna_id, posicion, creado_en, actualizado_en
+          id, tarea_id, columna_id, posicion
         ) VALUES (
-          $1, $2, $3, $4, $5, $6
+          $1, $2, $3, $4
         )
       `, [
         uuidv4(),
         tareaId,
         primeraColumna.id,
-        parseInt(totalTareasEnColumna.count) + 1,
-        new Date(),
-        new Date()
+        parseInt(totalTareasEnColumna.count) + 1
       ]);
       
       logger.info(`Tarea ${tareaId} añadida a columna Kanban: ${primeraColumna.id}`);
@@ -149,10 +141,8 @@ async function execute(tarea, usuarioId) {
     // Recupera la tarea recién creada para devolverla
     const nuevaTarea = await db.one(`
       SELECT t.*, 
-             u_creador.nombre as creador_nombre,
              u_asignado.nombre as asignado_nombre
       FROM tareas t
-      LEFT JOIN usuarios u_creador ON t.creado_por = u_creador.id
       LEFT JOIN usuarios u_asignado ON t.asignado_a = u_asignado.id
       WHERE t.id = $1
     `, [tareaId]);

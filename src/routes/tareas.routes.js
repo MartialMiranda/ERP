@@ -62,8 +62,12 @@ router.get(
     query('equipo_id').optional().isUUID().withMessage('ID de equipo inválido'),
     query('proyecto_id').optional().isUUID().withMessage('ID de proyecto inválido'),
     query('asignado_a').optional().isUUID().withMessage('ID de usuario inválido'),
-    query('ordenar_por').optional().isIn(['titulo', 'fecha_inicio', 'fecha_vencimiento', 'prioridad', 'estado', 'creado_en']).withMessage('Campo de ordenamiento inválido'),
-    query('orden').optional().isIn(['asc', 'desc']).withMessage('Orden debe ser asc o desc')
+    query('ordenar_por').optional().isIn(['titulo', 'fecha_vencimiento', 'prioridad', 'estado', 'creado_en']).withMessage('Campo de ordenamiento inválido'),
+    query('orden').optional().isIn(['asc', 'desc']).withMessage('Orden debe ser asc o desc'),
+    query('filtro').optional().isString().withMessage('Filtro debe ser una cadena de texto'),
+    query('filtro_texto').optional().isString().withMessage('Texto de filtro debe ser una cadena de texto'),
+    query('fecha_vencimiento_desde').optional().isISO8601().withMessage('Formato de fecha de inicio de vencimiento inválido'),
+    query('fecha_vencimiento_hasta').optional().isISO8601().withMessage('Formato de fecha de fin de vencimiento inválido')
   ],
   validarErrores,
   async (req, res) => {
@@ -74,6 +78,7 @@ router.get(
       const filtros = {
         pagina: req.query.pagina ? parseInt(req.query.pagina) : 1,
         por_pagina: req.query.por_pagina ? parseInt(req.query.por_pagina) : 20,
+        filtro_texto: req.query.filtro || '',
         estado: req.query.estado,
         prioridad: req.query.prioridad,
         equipo_id: req.query.equipo_id,
@@ -82,8 +87,6 @@ router.get(
         sin_asignar: req.query.sin_asignar,
         busqueda: req.query.busqueda,
         etiqueta: req.query.etiqueta,
-        fecha_inicio_desde: req.query.fecha_inicio_desde,
-        fecha_inicio_hasta: req.query.fecha_inicio_hasta,
         fecha_vencimiento_desde: req.query.fecha_vencimiento_desde,
         fecha_vencimiento_hasta: req.query.fecha_vencimiento_hasta,
         vencidas: req.query.vencidas,
@@ -147,7 +150,6 @@ router.post(
     body('descripcion').optional(),
     body('estado').optional().isIn(['pendiente', 'en progreso', 'completada', 'cancelada']).withMessage('Estado inválido'),
     body('prioridad').optional().isIn(['baja', 'media', 'alta', 'urgente']).withMessage('Prioridad inválida'),
-    body('fecha_inicio').optional().isDate().withMessage('Formato de fecha inválido'),
     body('fecha_vencimiento').optional().isDate().withMessage('Formato de fecha inválido'),
     body('equipo_id').notEmpty().withMessage('El ID del equipo es obligatorio').isUUID().withMessage('ID de equipo inválido'),
     body('asignado_a').optional().isUUID().withMessage('ID de usuario inválido'),
@@ -188,7 +190,6 @@ router.put(
     body('descripcion').optional(),
     body('estado').optional().isIn(['pendiente', 'en progreso', 'completada', 'cancelada']).withMessage('Estado inválido'),
     body('prioridad').optional().isIn(['baja', 'media', 'alta', 'urgente']).withMessage('Prioridad inválida'),
-    body('fecha_inicio').optional().isDate().withMessage('Formato de fecha inválido'),
     body('fecha_vencimiento').optional().isDate().withMessage('Formato de fecha inválido'),
     body('asignado_a').optional().isUUID().withMessage('ID de usuario inválido'),
     body('etiquetas').optional().isArray().withMessage('Las etiquetas deben ser un array')

@@ -44,7 +44,6 @@ async function execute(tareaId, datosActualizados, usuarioId) {
       LEFT JOIN equipos e ON pe.equipo_id = e.id
       LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
       WHERE t.id = $1 AND (
-        t.creado_por = $2 OR 
         t.asignado_a = $2 OR 
         (eu.usuario_id = $2 AND eu.rol = 'lider') OR 
         eu.usuario_id = $2
@@ -81,76 +80,50 @@ async function execute(tareaId, datosActualizados, usuarioId) {
       }
     }
     
-    // Preparar los campos a actualizar
+    // Determinar qué campos se van a actualizar
     const updateFields = [];
     const updateValues = [];
     let paramCount = 1;
     
-    // Título de la tarea
     if (datosActualizados.titulo !== undefined) {
       updateFields.push(`titulo = $${paramCount++}`);
       updateValues.push(datosActualizados.titulo);
     }
     
-    // Descripción de la tarea
     if (datosActualizados.descripcion !== undefined) {
       updateFields.push(`descripcion = $${paramCount++}`);
       updateValues.push(datosActualizados.descripcion);
     }
     
-    // Estado de la tarea
     if (datosActualizados.estado !== undefined) {
-      // Validar que el estado es uno de los permitidos
-      const estadosValidos = ['pendiente', 'en progreso', 'completada', 'cancelada'];
-      if (!estadosValidos.includes(datosActualizados.estado)) {
-        logger.warn(`Estado inválido para tarea: ${datosActualizados.estado}`);
-        throw new Error(`Estado de tarea inválido. Debe ser uno de: ${estadosValidos.join(', ')}`);
-      }
-      
       updateFields.push(`estado = $${paramCount++}`);
       updateValues.push(datosActualizados.estado);
     }
     
-    // Prioridad de la tarea
     if (datosActualizados.prioridad !== undefined) {
-      // Validar que la prioridad es una de las permitidas
-      const prioridadesValidas = ['baja', 'media', 'alta', 'urgente'];
-      if (!prioridadesValidas.includes(datosActualizados.prioridad)) {
-        logger.warn(`Prioridad inválida para tarea: ${datosActualizados.prioridad}`);
-        throw new Error(`Prioridad de tarea inválida. Debe ser una de: ${prioridadesValidas.join(', ')}`);
-      }
-      
       updateFields.push(`prioridad = $${paramCount++}`);
       updateValues.push(datosActualizados.prioridad);
     }
     
-    // Fecha de inicio
-    if (datosActualizados.fecha_inicio !== undefined) {
-      updateFields.push(`fecha_inicio = $${paramCount++}`);
-      updateValues.push(datosActualizados.fecha_inicio);
-    }
-    
-    // Fecha de vencimiento
     if (datosActualizados.fecha_vencimiento !== undefined) {
       updateFields.push(`fecha_vencimiento = $${paramCount++}`);
       updateValues.push(datosActualizados.fecha_vencimiento);
     }
     
-    // Usuario asignado
     if (datosActualizados.asignado_a !== undefined) {
       updateFields.push(`asignado_a = $${paramCount++}`);
       updateValues.push(datosActualizados.asignado_a);
     }
     
-    // Etiquetas
-    if (datosActualizados.etiquetas !== undefined) {
-      updateFields.push(`etiquetas = $${paramCount++}`);
-      updateValues.push(datosActualizados.etiquetas);
-    }
-    
-    // Añadir siempre la fecha de actualización
+    // Actualizar fecha de modificación
     updateFields.push(`actualizado_en = $${paramCount++}`);
     updateValues.push(new Date());
+    
+    // Si no hay campos para actualizar, salir
+    if (updateFields.length === 0) {
+      logger.warn(`Solicitud de actualización sin cambios para tarea: ${tareaId}`);
+      throw new Error('No se especificaron campos para actualizar');
+    }
     
     // Añadir el ID de la tarea para el WHERE
     updateValues.push(tareaId);
@@ -186,9 +159,9 @@ async function execute(tareaId, datosActualizados, usuarioId) {
             // Actualizar la columna de la tarea
             await db.none(`
               UPDATE kanban_tareas 
-              SET columna_id = $1, actualizado_en = $2
-              WHERE tarea_id = $3
-            `, [columnaCompletadas.id, new Date(), tareaId]);
+              SET columna_id = $1
+              WHERE tarea_id = $2
+            `, [columnaCompletadas.id, tareaId]);
             
             logger.info(`Tarea movida a columna 'Completadas' en Kanban: ${columnaCompletadas.id}`);
           }
@@ -201,10 +174,8 @@ async function execute(tareaId, datosActualizados, usuarioId) {
     // Recuperar la tarea actualizada
     const tareaActualizada = await db.one(`
       SELECT t.*, 
-             u_creador.nombre as creador_nombre,
              u_asignado.nombre as asignado_nombre
       FROM tareas t
-      LEFT JOIN usuarios u_creador ON t.creado_por = u_creador.id
       LEFT JOIN usuarios u_asignado ON t.asignado_a = u_asignado.id
       WHERE t.id = $1
     `, [tareaId]);

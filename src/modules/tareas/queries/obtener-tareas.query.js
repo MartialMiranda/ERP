@@ -37,7 +37,6 @@ async function execute(usuarioId, filtros = {}) {
     // Construir la consulta base
     let query = `
       SELECT t.*,
-             u_creador.nombre as creador_nombre,
              u_asignado.nombre as asignado_nombre,
              e.nombre as equipo_nombre,
              p.nombre as proyecto_nombre,
@@ -47,10 +46,8 @@ async function execute(usuarioId, filtros = {}) {
       LEFT JOIN proyecto_equipos pe ON t.proyecto_id = pe.proyecto_id
       LEFT JOIN equipos e ON pe.equipo_id = e.id
       LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
-      LEFT JOIN usuarios u_creador ON t.creado_por = u_creador.id
       LEFT JOIN usuarios u_asignado ON t.asignado_a = u_asignado.id
       WHERE (
-        t.creado_por = $1 OR 
         t.asignado_a = $1 OR 
         (eu.usuario_id = $1 AND eu.rol = 'lider') OR 
         eu.usuario_id = $1
@@ -112,17 +109,6 @@ async function execute(usuarioId, filtros = {}) {
       paramCount++;
     }
     
-    // Filtro por fecha de inicio (rango)
-    if (filtros.fecha_inicio_desde) {
-      whereClauses.push(`t.fecha_inicio >= $${paramCount++}`);
-      queryParams.push(filtros.fecha_inicio_desde);
-    }
-    
-    if (filtros.fecha_inicio_hasta) {
-      whereClauses.push(`t.fecha_inicio <= $${paramCount++}`);
-      queryParams.push(filtros.fecha_inicio_hasta);
-    }
-    
     // Filtro por fecha de vencimiento (rango)
     if (filtros.fecha_vencimiento_desde) {
       whereClauses.push(`t.fecha_vencimiento >= $${paramCount++}`);
@@ -153,7 +139,7 @@ async function execute(usuarioId, filtros = {}) {
     query += ` ORDER BY `;
     
     if (filtros.ordenar_por) {
-      const camposValidos = ['titulo', 'fecha_inicio', 'fecha_vencimiento', 'prioridad', 'estado', 'creado_en'];
+      const camposValidos = ['titulo', 'fecha_vencimiento', 'prioridad', 'estado', 'creado_en'];
       const campoOrden = camposValidos.includes(filtros.ordenar_por) ? 
         `t.${filtros.ordenar_por}` : 't.creado_en';
       
@@ -190,7 +176,6 @@ async function execute(usuarioId, filtros = {}) {
       LEFT JOIN equipos e ON pe.equipo_id = e.id
       LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
       WHERE (
-        t.creado_por = $1 OR 
         t.asignado_a = $1 OR 
         (eu.usuario_id = $1 AND eu.rol = 'lider') OR 
         eu.usuario_id = $1

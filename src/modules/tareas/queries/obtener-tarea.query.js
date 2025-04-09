@@ -43,7 +43,6 @@ async function execute(tareaId, usuarioId) {
       LEFT JOIN equipos e ON pe.equipo_id = e.id
       LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
       WHERE t.id = $1 AND (
-        t.creado_por = $2 OR 
         t.asignado_a = $2 OR 
         (eu.usuario_id = $2 AND eu.rol = 'lider') OR 
         eu.usuario_id = $2
@@ -59,8 +58,6 @@ async function execute(tareaId, usuarioId) {
     // Obtener información completa de la tarea
     const tarea = await db.oneOrNone(`
       SELECT t.*,
-             u_creador.nombre as creador_nombre,
-             u_creador.email as creador_email,
              u_asignado.nombre as asignado_nombre,
              u_asignado.email as asignado_email,
              e.nombre as equipo_nombre,
@@ -71,7 +68,6 @@ async function execute(tareaId, usuarioId) {
       JOIN proyectos p ON t.proyecto_id = p.id
       LEFT JOIN proyecto_equipos pe ON t.proyecto_id = pe.proyecto_id
       LEFT JOIN equipos e ON pe.equipo_id = e.id
-      LEFT JOIN usuarios u_creador ON t.creado_por = u_creador.id
       LEFT JOIN usuarios u_asignado ON t.asignado_a = u_asignado.id
       WHERE t.id = $1
     `, [tareaId]);
@@ -83,7 +79,7 @@ async function execute(tareaId, usuarioId) {
     
     // Obtener información de la posición de la tarea en el tablero Kanban, si existe
     const kanbanInfo = await db.oneOrNone(`
-      SELECT kt.*, kc.nombre as columna_nombre, kc.orden as columna_orden
+      SELECT kt.*, kc.nombre as columna_nombre, kc.posicion as columna_posicion
       FROM kanban_tareas kt
       JOIN kanban_columnas kc ON kt.columna_id = kc.id
       WHERE kt.tarea_id = $1

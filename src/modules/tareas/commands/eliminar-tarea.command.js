@@ -35,7 +35,7 @@ async function execute(tareaId, usuarioId) {
     logger.info(`Eliminando tarea: ${tareaId} por usuario: ${usuarioId}`);
     
     // Verificar que la tarea existe y que el usuario tiene permisos para eliminarla
-    // Solo el creador o el líder del equipo pueden eliminar tareas
+    // Solo el líder del equipo puede eliminar tareas
     const tarea = await db.oneOrNone(`
       SELECT t.* 
       FROM tareas t
@@ -44,7 +44,6 @@ async function execute(tareaId, usuarioId) {
       LEFT JOIN equipos e ON pe.equipo_id = e.id
       LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
       WHERE t.id = $1 AND (
-        t.creado_por = $2 OR 
         (eu.usuario_id = $2 AND eu.rol = 'lider')
       )
     `, [tareaId, usuarioId]);

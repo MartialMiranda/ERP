@@ -39,13 +39,11 @@ async function execute(kanbanTareaId, usuarioId) {
       SELECT kt.*, t.titulo, t.descripcion, t.prioridad, t.estado, t.fecha_vencimiento, 
              t.creado_en, t.actualizado_en, t.proyecto_id,
              u.nombre as asignado_nombre, u.email as asignado_email,
-             c.nombre as creador_nombre, c.email as creador_email,
              kc.nombre as columna_nombre
       FROM kanban_tareas kt
       JOIN tareas t ON kt.tarea_id = t.id
       JOIN kanban_columnas kc ON kt.columna_id = kc.id
       LEFT JOIN usuarios u ON t.asignado_a = u.id
-      LEFT JOIN usuarios c ON t.creado_por = c.id
       WHERE kt.id = $1
     `, [kanbanTareaId]);
     

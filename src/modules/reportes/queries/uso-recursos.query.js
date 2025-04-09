@@ -97,11 +97,11 @@ async function execute(filtros, usuarioId) {
         r.tipo as recurso_tipo,
         r.costo as recurso_costo,
         r.moneda as recurso_moneda,
-        COUNT(DISTINCT ra.id) as total_asignaciones,
-        COUNT(DISTINCT ra.equipo_id) as equipos_asignados,
-        SUM(CASE WHEN ra.fecha_fin IS NULL OR ra.fecha_fin > CURRENT_DATE THEN 1 ELSE 0 END) as asignaciones_activas,
-        AVG(EXTRACT(EPOCH FROM (COALESCE(ra.fecha_fin, CURRENT_DATE) - ra.fecha_inicio))/86400.0)::numeric as promedio_dias_asignacion,
-        SUM(ra.cantidad) as cantidad_total_asignada
+        COUNT(DISTINCT eu.id) as total_asignaciones,
+        COUNT(DISTINCT eu.equipo_id) as equipos_asignados,
+        SUM(CASE WHEN eu.fecha_fin IS NULL OR eu.fecha_fin > CURRENT_DATE THEN 1 ELSE 0 END) as asignaciones_activas,
+        AVG(EXTRACT(EPOCH FROM (COALESCE(eu.fecha_fin, CURRENT_DATE) - eu.asignado_en))/86400.0)::numeric as promedio_dias_asignacion,
+        SUM(eu.cantidad) as cantidad_total_asignada
       FROM recursos r
       JOIN equipo_usuarios eu ON r.id = eu.recurso_id
       JOIN equipos e ON eu.equipo_id = e.id
