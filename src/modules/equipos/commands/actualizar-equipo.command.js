@@ -42,10 +42,23 @@ async function execute(equipoId, datosActualizados, usuarioId) {
     // Solo el creador del proyecto o el líder del equipo pueden actualizar el equipo
     const equipo = await db.oneOrNone(
       `
-      SELECT e.* 
+      SELECT e.*, 
+             (SELECT eu_lider.usuario_id 
+              FROM equipo_usuarios eu_lider 
+              WHERE eu_lider.equipo_id = e.id AND eu_lider.rol = 'lider'
+              LIMIT 1) as lider_id
       FROM equipos e
-      JOIN proyectos p ON e.proyecto_id = p.id
-      WHERE e.id = $1 AND (p.creado_por = $2 OR e.lider_id = $2)
+      JOIN proyecto_equipos pe ON e.id = pe.equipo_id
+      JOIN proyectos p ON pe.proyecto_id = p.id
+      WHERE e.id = $1 AND (
+        p.creado_por = $2 OR 
+        EXISTS (
+          SELECT 1 FROM equipo_usuarios eu_lider 
+          WHERE eu_lider.equipo_id = e.id 
+          AND eu_lider.usuario_id = $2 
+          AND eu_lider.rol = 'lider'
+        )
+      )
     `,
       [equipoId, usuarioId]
     );
@@ -90,9 +103,9 @@ async function execute(equipoId, datosActualizados, usuarioId) {
         );
         throw new Error("El usuario designado como líder no existe");
       }
-
-      updateFields.push(`lider_id = $${paramCount++}`);
-      updateValues.push(datosActualizados.lider_id);
+      
+      // No añadir lider_id a los campos de actualización de equipos
+      // ya que se gestionará a través de equipo_usuarios
     }
 
     // Añadir siempre la fecha de actualización
@@ -137,19 +150,19 @@ async function execute(equipoId, datosActualizados, usuarioId) {
           await t.none(
             `
             UPDATE equipo_usuarios 
-            SET rol = 'lider', actualizado_en = $1
-            WHERE equipo_id = $2 AND usuario_id = $3
+            SET rol = 'lider'
+            WHERE equipo_id = $1 AND usuario_id = $2
           `,
-            [new Date(), equipoId, datosActualizados.lider_id]
+            [equipoId, datosActualizados.lider_id]
           );
         } else {
           // Añadir como nuevo miembro con rol 'lider'
           await t.none(
             `
             INSERT INTO equipo_usuarios (
-              id, equipo_id, usuario_id, rol, creado_en, actualizado_en
+              id, equipo_id, usuario_id, rol, asignado_en
             ) VALUES (
-              $1, $2, $3, $4, $5, $6
+              $1, $2, $3, $4, $5
             )
           `,
             [
@@ -157,8 +170,7 @@ async function execute(equipoId, datosActualizados, usuarioId) {
               equipoId,
               datosActualizados.lider_id,
               "lider",
-              new Date(),
-              new Date(),
+              new Date()
             ]
           );
         }
@@ -167,10 +179,10 @@ async function execute(equipoId, datosActualizados, usuarioId) {
         await t.none(
           `
           UPDATE equipo_usuarios 
-          SET rol = 'miembro', actualizado_en = $1
-          WHERE equipo_id = $2 AND usuario_id = $3
+          SET rol = 'miembro'
+          WHERE equipo_id = $1 AND usuario_id = $2
         `,
-          [new Date(), equipoId, equipo.lider_id]
+          [equipoId, equipo.lider_id]
         );
 
         logger.info(
@@ -223,12 +235,12 @@ async function execute(equipoId, datosActualizados, usuarioId) {
             await t.none(
               `
               INSERT INTO equipo_usuarios (
-                id, equipo_id, usuario_id, rol, creado_en, actualizado_en
+                id, equipo_id, usuario_id, rol, asignado_en
               ) VALUES (
-                $1, $2, $3, $4, $5, $6
+                $1, $2, $3, $4, $5
               )
             `,
-              [uuidv4(), equipoId, miembroId, "miembro", new Date(), new Date()]
+              [uuidv4(), equipoId, miembroId, "miembro", new Date()]
             );
 
             logger.info(`Miembro añadido al equipo: ${miembroId}`);
@@ -257,12 +269,18 @@ async function execute(equipoId, datosActualizados, usuarioId) {
       `
       SELECT e.*, 
              p.nombre as proyecto_nombre,
-             u_lider.nombre as lider_nombre,
+             (
+               SELECT u.nombre
+               FROM equipo_usuarios eu_lider
+               JOIN usuarios u ON eu_lider.usuario_id = u.id
+               WHERE eu_lider.equipo_id = e.id AND eu_lider.rol = 'lider'
+               LIMIT 1
+             ) as lider_nombre,
              u_creador.nombre as creador_nombre
       FROM equipos e
-      JOIN proyectos p ON e.proyecto_id = p.id
-      LEFT JOIN usuarios u_lider ON e.lider_id = u_lider.id
-      LEFT JOIN usuarios u_creador ON e.creado_por = u_creador.id
+      JOIN proyecto_equipos pe ON e.id = pe.equipo_id
+      JOIN proyectos p ON pe.proyecto_id = p.id
+      LEFT JOIN usuarios u_creador ON p.creado_por = u_creador.id
       WHERE e.id = $1
     `,
       [equipoId]
@@ -273,8 +291,7 @@ async function execute(equipoId, datosActualizados, usuarioId) {
       `
       SELECT eu.*, 
              u.nombre, 
-             u.email,
-             u.avatar_url
+             u.email
       FROM equipo_usuarios eu
       JOIN usuarios u ON eu.usuario_id = u.id
       WHERE eu.equipo_id = $1

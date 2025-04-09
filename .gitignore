@@ -12,6 +12,7 @@ yarn-error.log
 .env.test.local
 .env.production.local
 README.md
+script.md
 
 # Logs
 logs/

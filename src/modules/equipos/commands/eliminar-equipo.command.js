@@ -39,7 +39,8 @@ async function execute(equipoId, usuarioId) {
     const equipo = await db.oneOrNone(`
       SELECT e.*, p.creado_por as proyecto_creador
       FROM equipos e
-      JOIN proyectos p ON e.proyecto_id = p.id
+      JOIN proyecto_equipos pe ON e.id = pe.equipo_id
+      JOIN proyectos p ON pe.proyecto_id = p.id
       WHERE e.id = $1 AND p.creado_por = $2
     `, [equipoId, usuarioId]);
     
@@ -51,8 +52,9 @@ async function execute(equipoId, usuarioId) {
     // Verificar si hay tareas asociadas al equipo
     const tareasEquipo = await db.oneOrNone(`
       SELECT COUNT(*) as total
-      FROM tareas
-      WHERE equipo_id = $1
+      FROM tareas t
+      JOIN proyecto_equipos pe ON t.proyecto_id = pe.proyecto_id
+      WHERE pe.equipo_id = $1
     `, [equipoId]);
     
     if (parseInt(tareasEquipo.total) > 0) {
@@ -62,9 +64,9 @@ async function execute(equipoId, usuarioId) {
     
     // Comenzar una transacción para eliminar el equipo y sus registros relacionados
     await db.tx(async t => {
-      // 1. Eliminar asignaciones de recursos al equipo
+      // 1. Eliminar relación con proyectos
       await t.none(`
-        DELETE FROM recurso_asignaciones 
+        DELETE FROM proyecto_equipos 
         WHERE equipo_id = $1
       `, [equipoId]);
       

@@ -103,12 +103,12 @@ async function execute(filtros, usuarioId) {
         AVG(EXTRACT(EPOCH FROM (COALESCE(ra.fecha_fin, CURRENT_DATE) - ra.fecha_inicio))/86400.0)::numeric as promedio_dias_asignacion,
         SUM(ra.cantidad) as cantidad_total_asignada
       FROM recursos r
-      JOIN recurso_asignaciones ra ON r.id = ra.recurso_id
-      JOIN equipos e ON ra.equipo_id = e.id
+      JOIN equipo_usuarios eu ON r.id = eu.recurso_id
+      JOIN equipos e ON eu.equipo_id = e.id
       JOIN proyectos p ON e.proyecto_id = p.id
-      WHERE ra.fecha_inicio >= $1 AND (ra.fecha_fin <= $2 OR ra.fecha_fin IS NULL)
+      WHERE eu.asignado_en >= $1
       AND (r.creado_por = $3 OR e.lider_id = $3 OR p.lider_id = $3 OR
-           EXISTS (SELECT 1 FROM equipo_usuarios eu WHERE eu.equipo_id = e.id AND eu.usuario_id = $3))
+           EXISTS (SELECT 1 FROM equipo_usuarios eu2 WHERE eu2.equipo_id = e.id AND eu2.usuario_id = $3))
       ${condicionesSQL}
       GROUP BY r.id, r.nombre, r.tipo, r.costo, r.moneda
       ORDER BY total_asignaciones DESC

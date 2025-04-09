@@ -39,8 +39,14 @@ async function execute(tareaId, usuarioId) {
     const tarea = await db.oneOrNone(`
       SELECT t.* 
       FROM tareas t
-      JOIN equipos e ON t.equipo_id = e.id
-      WHERE t.id = $1 AND (t.creado_por = $2 OR e.lider_id = $2)
+      JOIN proyectos p ON t.proyecto_id = p.id
+      LEFT JOIN proyecto_equipos pe ON t.proyecto_id = pe.proyecto_id
+      LEFT JOIN equipos e ON pe.equipo_id = e.id
+      LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
+      WHERE t.id = $1 AND (
+        t.creado_por = $2 OR 
+        (eu.usuario_id = $2 AND eu.rol = 'lider')
+      )
     `, [tareaId, usuarioId]);
     
     if (!tarea) {

@@ -37,10 +37,14 @@ async function execute(tarea, usuarioId) {
     
     // Verificar que el equipo existe y que el usuario tiene acceso al equipo
     const equipo = await db.oneOrNone(`
-      SELECT e.* 
+      SELECT e.*, pe.proyecto_id 
       FROM equipos e
+      JOIN proyecto_equipos pe ON e.id = pe.equipo_id
       LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
-      WHERE e.id = $1 AND (e.lider_id = $2 OR eu.usuario_id = $2)
+      WHERE e.id = $1 AND (
+        eu.usuario_id = $2 AND eu.rol = 'lider'
+        OR eu.usuario_id = $2
+      )
     `, [tarea.equipo_id, usuarioId]);
     
     if (!equipo) {
@@ -73,7 +77,7 @@ async function execute(tarea, usuarioId) {
       prioridad: tarea.prioridad || 'media',
       fecha_inicio: tarea.fecha_inicio || new Date(),
       fecha_vencimiento: tarea.fecha_vencimiento || null,
-      equipo_id: tarea.equipo_id,
+      proyecto_id: equipo.proyecto_id,
       creado_por: usuarioId,
       asignado_a: tarea.asignado_a || null,
       etiquetas: tarea.etiquetas || [],
@@ -85,7 +89,7 @@ async function execute(tarea, usuarioId) {
     await db.none(`
       INSERT INTO tareas (
         id, titulo, descripcion, estado, prioridad, 
-        fecha_inicio, fecha_vencimiento, equipo_id, 
+        fecha_inicio, fecha_vencimiento, proyecto_id, 
         creado_por, asignado_a, etiquetas, creado_en, actualizado_en
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
@@ -98,7 +102,7 @@ async function execute(tarea, usuarioId) {
       tareaData.prioridad,
       tareaData.fecha_inicio, 
       tareaData.fecha_vencimiento, 
-      tareaData.equipo_id,
+      tareaData.proyecto_id,
       tareaData.creado_por, 
       tareaData.asignado_a, 
       tareaData.etiquetas, 
@@ -109,9 +113,9 @@ async function execute(tarea, usuarioId) {
     // Si el proyecto usa Kanban, añadir la tarea a la primera columna
     const columnasKanban = await db.manyOrNone(`
       SELECT kc.* FROM kanban_columnas kc
-      JOIN equipos e ON e.proyecto_id = kc.proyecto_id
-      WHERE e.id = $1
-      ORDER BY kc.orden ASC
+      JOIN proyecto_equipos pe ON pe.proyecto_id = kc.proyecto_id
+      WHERE pe.equipo_id = $1
+      ORDER BY kc.posicion ASC
     `, [tarea.equipo_id]);
     
     if (columnasKanban && columnasKanban.length > 0) {

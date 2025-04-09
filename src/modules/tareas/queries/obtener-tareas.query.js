@@ -43,12 +43,18 @@ async function execute(usuarioId, filtros = {}) {
              p.nombre as proyecto_nombre,
              p.id as proyecto_id
       FROM tareas t
-      JOIN equipos e ON t.equipo_id = e.id
-      JOIN proyectos p ON e.proyecto_id = p.id
+      JOIN proyectos p ON t.proyecto_id = p.id
+      LEFT JOIN proyecto_equipos pe ON t.proyecto_id = pe.proyecto_id
+      LEFT JOIN equipos e ON pe.equipo_id = e.id
+      LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
       LEFT JOIN usuarios u_creador ON t.creado_por = u_creador.id
       LEFT JOIN usuarios u_asignado ON t.asignado_a = u_asignado.id
-      LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
-      WHERE (t.creado_por = $1 OR t.asignado_a = $1 OR e.lider_id = $1 OR eu.usuario_id = $1)
+      WHERE (
+        t.creado_por = $1 OR 
+        t.asignado_a = $1 OR 
+        (eu.usuario_id = $1 AND eu.rol = 'lider') OR 
+        eu.usuario_id = $1
+      )
     `;
     
     const queryParams = [usuarioId];
@@ -59,13 +65,13 @@ async function execute(usuarioId, filtros = {}) {
     
     // Filtro por equipo
     if (filtros.equipo_id) {
-      whereClauses.push(`t.equipo_id = $${paramCount++}`);
+      whereClauses.push(`pe.equipo_id = $${paramCount++}`);
       queryParams.push(filtros.equipo_id);
     }
     
     // Filtro por proyecto
     if (filtros.proyecto_id) {
-      whereClauses.push(`e.proyecto_id = $${paramCount++}`);
+      whereClauses.push(`pe.proyecto_id = $${paramCount++}`);
       queryParams.push(filtros.proyecto_id);
     }
     
@@ -179,9 +185,16 @@ async function execute(usuarioId, filtros = {}) {
     let countQuery = `
       SELECT COUNT(DISTINCT t.id) 
       FROM tareas t
-      JOIN equipos e ON t.equipo_id = e.id
+      JOIN proyectos p ON t.proyecto_id = p.id
+      LEFT JOIN proyecto_equipos pe ON t.proyecto_id = pe.proyecto_id
+      LEFT JOIN equipos e ON pe.equipo_id = e.id
       LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
-      WHERE (t.creado_por = $1 OR t.asignado_a = $1 OR e.lider_id = $1 OR eu.usuario_id = $1)
+      WHERE (
+        t.creado_por = $1 OR 
+        t.asignado_a = $1 OR 
+        (eu.usuario_id = $1 AND eu.rol = 'lider') OR 
+        eu.usuario_id = $1
+      )
     `;
     
     // Aplicar los mismos filtros a la consulta de conteo

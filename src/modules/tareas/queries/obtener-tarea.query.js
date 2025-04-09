@@ -38,9 +38,16 @@ async function execute(tareaId, usuarioId) {
     const tieneAcceso = await db.oneOrNone(`
       SELECT 1
       FROM tareas t
-      JOIN equipos e ON t.equipo_id = e.id
+      JOIN proyectos p ON t.proyecto_id = p.id
+      LEFT JOIN proyecto_equipos pe ON t.proyecto_id = pe.proyecto_id
+      LEFT JOIN equipos e ON pe.equipo_id = e.id
       LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
-      WHERE t.id = $1 AND (t.creado_por = $2 OR t.asignado_a = $2 OR e.lider_id = $2 OR eu.usuario_id = $2)
+      WHERE t.id = $1 AND (
+        t.creado_por = $2 OR 
+        t.asignado_a = $2 OR 
+        (eu.usuario_id = $2 AND eu.rol = 'lider') OR 
+        eu.usuario_id = $2
+      )
       LIMIT 1
     `, [tareaId, usuarioId]);
     
@@ -61,8 +68,9 @@ async function execute(tareaId, usuarioId) {
              p.nombre as proyecto_nombre,
              p.id as proyecto_id
       FROM tareas t
-      JOIN equipos e ON t.equipo_id = e.id
-      JOIN proyectos p ON e.proyecto_id = p.id
+      JOIN proyectos p ON t.proyecto_id = p.id
+      LEFT JOIN proyecto_equipos pe ON t.proyecto_id = pe.proyecto_id
+      LEFT JOIN equipos e ON pe.equipo_id = e.id
       LEFT JOIN usuarios u_creador ON t.creado_por = u_creador.id
       LEFT JOIN usuarios u_asignado ON t.asignado_a = u_asignado.id
       WHERE t.id = $1

@@ -84,6 +84,25 @@ exports.seed = async function(knex) {
   
   console.log(`Creadas ${equipoUsuariosData.length} relaciones equipo-usuario`);
   
+  // Crear relaciones entre proyectos y equipos
+  const proyectoEquiposData = [];
+  
+  // Asignar cada equipo a un proyecto aleatorio
+  for (const equipoId of equipoIds) {
+    const proyectoId = faker.helpers.arrayElement(proyectoIds);
+    proyectoEquiposData.push({
+      id: uuidv4(),
+      proyecto_id: proyectoId,
+      equipo_id: equipoId,
+      creado_en: new Date()
+    });
+  }
+  
+  await knex('proyecto_equipos').delete();
+  await knex('proyecto_equipos').insert(proyectoEquiposData);
+  
+  console.log(`Creadas ${proyectoEquiposData.length} relaciones proyecto-equipo`);
+
   // Return data for reference in other seeds
   return { adminId, userIds, proyectoIds, equipoIds };
 };

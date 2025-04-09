@@ -113,8 +113,8 @@ async function execute(filtros, usuarioId) {
       JOIN proyectos p ON e.proyecto_id = p.id
       LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
       LEFT JOIN tareas t ON e.id = t.equipo_id AND t.fecha_inicio >= $1 AND (t.fecha_finalizacion <= $2 OR t.fecha_finalizacion IS NULL)
-      LEFT JOIN recurso_asignaciones ra ON e.id = ra.equipo_id AND (ra.fecha_inicio >= $1 AND (ra.fecha_fin <= $2 OR ra.fecha_fin IS NULL))
-      LEFT JOIN recursos r ON ra.recurso_id = r.id
+      LEFT JOIN equipo_usuarios eu2 ON e.id = eu2.equipo_id AND eu2.asignado_en >= $1
+      LEFT JOIN recursos r ON eu2.recurso_id = r.id
       WHERE (e.creado_por = $3 OR e.lider_id = $3 OR eu.usuario_id = $3) ${proyectoCondicion}
       GROUP BY e.id, e.nombre, p.id, p.nombre
       ORDER BY tareas_completadas DESC

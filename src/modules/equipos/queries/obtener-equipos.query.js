@@ -38,8 +38,6 @@ async function execute(usuarioId, filtros = {}) {
     let query = `
       SELECT DISTINCT e.*,
              p.nombre as proyecto_nombre,
-             u_lider.nombre as lider_nombre,
-             u_creador.nombre as creador_nombre,
              (
                SELECT COUNT(*) 
                FROM equipo_usuarios eu 
@@ -48,18 +46,25 @@ async function execute(usuarioId, filtros = {}) {
              (
                SELECT COUNT(*) 
                FROM tareas t 
-               WHERE t.equipo_id = e.id
-             ) as total_tareas
+               JOIN proyecto_equipos pe2 ON t.proyecto_id = pe2.proyecto_id AND pe2.equipo_id = e.id
+             ) as total_tareas,
+             (
+               SELECT u.nombre
+               FROM equipo_usuarios eu 
+               JOIN usuarios u ON eu.usuario_id = u.id
+               WHERE eu.equipo_id = e.id AND eu.rol = 'lider'
+               LIMIT 1
+             ) as lider_nombre,
+             p.creado_por as creador_id,
+             u_creador.nombre as creador_nombre
       FROM equipos e
-      JOIN proyectos p ON e.proyecto_id = p.id
-      LEFT JOIN usuarios u_lider ON e.lider_id = u_lider.id
-      LEFT JOIN usuarios u_creador ON e.creado_por = u_creador.id
+      JOIN proyecto_equipos pe ON e.id = pe.equipo_id
+      JOIN proyectos p ON pe.proyecto_id = p.id
+      LEFT JOIN usuarios u_creador ON p.creado_por = u_creador.id
       LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
       WHERE (
-        e.creado_por = $1 OR 
-        e.lider_id = $1 OR 
-        eu.usuario_id = $1 OR
-        p.creado_por = $1
+        p.creado_por = $1 OR 
+        eu.usuario_id = $1
       )
     `;
     
@@ -71,13 +76,18 @@ async function execute(usuarioId, filtros = {}) {
     
     // Filtro por proyecto
     if (filtros.proyecto_id) {
-      whereClauses.push(`e.proyecto_id = $${paramCount++}`);
+      whereClauses.push(`pe.proyecto_id = $${paramCount++}`);
       queryParams.push(filtros.proyecto_id);
     }
     
     // Filtro por líder
     if (filtros.lider_id) {
-      whereClauses.push(`e.lider_id = $${paramCount++}`);
+      whereClauses.push(`EXISTS (
+        SELECT 1 FROM equipo_usuarios eu_lider 
+        WHERE eu_lider.equipo_id = e.id 
+        AND eu_lider.usuario_id = $${paramCount++} 
+        AND eu_lider.rol = 'lider'
+      )`);
       queryParams.push(filtros.lider_id);
     }
     
@@ -95,7 +105,12 @@ async function execute(usuarioId, filtros = {}) {
     
     // Filtro por equipos donde es líder
     if (filtros.soy_lider === 'true') {
-      whereClauses.push(`e.lider_id = $1`);
+      whereClauses.push(`EXISTS (
+        SELECT 1 FROM equipo_usuarios eu_lider 
+        WHERE eu_lider.equipo_id = e.id 
+        AND eu_lider.usuario_id = $1 
+        AND eu_lider.rol = 'lider'
+      )`);
     }
     
     // Añadir cláusulas WHERE adicionales si hay filtros
@@ -132,13 +147,12 @@ async function execute(usuarioId, filtros = {}) {
     let countQuery = `
       SELECT COUNT(DISTINCT e.id) 
       FROM equipos e
-      JOIN proyectos p ON e.proyecto_id = p.id
+      JOIN proyecto_equipos pe ON e.id = pe.equipo_id
+      JOIN proyectos p ON pe.proyecto_id = p.id
       LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
       WHERE (
-        e.creado_por = $1 OR 
-        e.lider_id = $1 OR 
-        eu.usuario_id = $1 OR
-        p.creado_por = $1
+        p.creado_por = $1 OR 
+        eu.usuario_id = $1
       )
     `;
     
@@ -155,7 +169,7 @@ async function execute(usuarioId, filtros = {}) {
     // Para cada equipo, obtener miembros básicos (limitados a 5 por eficiencia)
     for (const equipo of equipos) {
       equipo.miembros_basicos = await db.manyOrNone(`
-        SELECT eu.usuario_id, eu.rol, u.nombre, u.avatar_url
+        SELECT eu.usuario_id, eu.rol, u.nombre
         FROM equipo_usuarios eu
         JOIN usuarios u ON eu.usuario_id = u.id
         WHERE eu.equipo_id = $1

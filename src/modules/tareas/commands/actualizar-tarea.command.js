@@ -39,9 +39,16 @@ async function execute(tareaId, datosActualizados, usuarioId) {
     const tarea = await db.oneOrNone(`
       SELECT t.* 
       FROM tareas t
-      JOIN equipos e ON t.equipo_id = e.id
+      JOIN proyectos p ON t.proyecto_id = p.id
+      LEFT JOIN proyecto_equipos pe ON t.proyecto_id = pe.proyecto_id
+      LEFT JOIN equipos e ON pe.equipo_id = e.id
       LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
-      WHERE t.id = $1 AND (t.creado_por = $2 OR t.asignado_a = $2 OR e.lider_id = $2 OR eu.usuario_id = $2)
+      WHERE t.id = $1 AND (
+        t.creado_por = $2 OR 
+        t.asignado_a = $2 OR 
+        (eu.usuario_id = $2 AND eu.rol = 'lider') OR 
+        eu.usuario_id = $2
+      )
     `, [tareaId, usuarioId]);
     
     if (!tarea) {
@@ -51,14 +58,26 @@ async function execute(tareaId, datosActualizados, usuarioId) {
     
     // Si se está cambiando el usuario asignado, verificar que pertenece al equipo
     if (datosActualizados.asignado_a && datosActualizados.asignado_a !== tarea.asignado_a) {
-      const miembroEquipo = await db.oneOrNone(`
-        SELECT 1 FROM equipo_usuarios 
-        WHERE equipo_id = $1 AND usuario_id = $2
-      `, [tarea.equipo_id, datosActualizados.asignado_a]);
+      // Obtener los equipos del proyecto
+      const equiposProyecto = await db.manyOrNone(`
+        SELECT e.id
+        FROM equipos e
+        JOIN proyecto_equipos pe ON e.id = pe.equipo_id
+        WHERE pe.proyecto_id = $1
+      `, [tarea.proyecto_id]);
       
-      if (!miembroEquipo) {
-        logger.warn(`El usuario asignado no pertenece al equipo: ${datosActualizados.asignado_a}`);
-        throw new Error('El usuario asignado no pertenece al equipo');
+      if (equiposProyecto && equiposProyecto.length > 0) {
+        const equipoIds = equiposProyecto.map(e => e.id);
+        
+        const miembroEquipo = await db.oneOrNone(`
+          SELECT 1 FROM equipo_usuarios eu
+          WHERE eu.equipo_id IN ($1:csv) AND eu.usuario_id = $2
+        `, [equipoIds, datosActualizados.asignado_a]);
+        
+        if (!miembroEquipo) {
+          logger.warn(`El usuario asignado no pertenece a ningún equipo del proyecto: ${datosActualizados.asignado_a}`);
+          throw new Error('El usuario asignado no pertenece a ningún equipo del proyecto');
+        }
       }
     }
     
@@ -151,11 +170,10 @@ async function execute(tareaId, datosActualizados, usuarioId) {
         // Buscar columna de "completadas" en el tablero Kanban
         const columnaCompletadas = await db.oneOrNone(`
           SELECT kc.* FROM kanban_columnas kc
-          JOIN equipos e ON e.proyecto_id = kc.proyecto_id
-          WHERE e.id = $1 AND kc.nombre ILIKE '%completad%'
-          ORDER BY kc.orden DESC
+          WHERE kc.proyecto_id = $1 AND kc.nombre ILIKE '%completad%'
+          ORDER BY kc.posicion DESC
           LIMIT 1
-        `, [tarea.equipo_id]);
+        `, [tarea.proyecto_id]);
         
         if (columnaCompletadas) {
           // Verificar si la tarea ya está en alguna columna
