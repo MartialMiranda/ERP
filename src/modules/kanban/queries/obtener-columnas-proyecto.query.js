@@ -38,7 +38,8 @@ async function execute(proyectoId, usuarioId) {
     const tieneAcceso = await db.oneOrNone(`
       SELECT 1
       FROM proyectos p
-      LEFT JOIN equipos e ON e.proyecto_id = p.id
+      LEFT JOIN proyecto_equipos pe ON pe.proyecto_id = p.id
+      LEFT JOIN equipos e ON pe.equipo_id = e.id
       LEFT JOIN equipo_usuarios eu ON eu.equipo_id = e.id
       WHERE p.id = $1 AND (p.creado_por = $2 OR eu.usuario_id = $2)
       LIMIT 1

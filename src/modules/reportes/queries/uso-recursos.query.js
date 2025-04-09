@@ -99,15 +99,16 @@ async function execute(filtros, usuarioId) {
         r.moneda as recurso_moneda,
         COUNT(DISTINCT eu.id) as total_asignaciones,
         COUNT(DISTINCT eu.equipo_id) as equipos_asignados,
-        SUM(CASE WHEN eu.fecha_fin IS NULL OR eu.fecha_fin > CURRENT_DATE THEN 1 ELSE 0 END) as asignaciones_activas,
-        AVG(EXTRACT(EPOCH FROM (COALESCE(eu.fecha_fin, CURRENT_DATE) - eu.asignado_en))/86400.0)::numeric as promedio_dias_asignacion,
-        SUM(eu.cantidad) as cantidad_total_asignada
+        COUNT(DISTINCT eu.id) as asignaciones_activas,
+        AVG(EXTRACT(EPOCH FROM (CURRENT_DATE - eu.asignado_en))/86400.0)::numeric as promedio_dias_asignacion,
+        COUNT(DISTINCT r.id) as cantidad_total_asignada
       FROM recursos r
       JOIN equipo_usuarios eu ON r.id = eu.recurso_id
       JOIN equipos e ON eu.equipo_id = e.id
-      JOIN proyectos p ON e.proyecto_id = p.id
+      JOIN proyecto_equipos pe ON e.id = pe.equipo_id
+      JOIN proyectos p ON pe.proyecto_id = p.id
       WHERE eu.asignado_en >= $1
-      AND (r.creado_por = $3 OR e.lider_id = $3 OR p.lider_id = $3 OR
+      AND (r.creado_por = $3 OR p.creado_por = $3 OR
            EXISTS (SELECT 1 FROM equipo_usuarios eu2 WHERE eu2.equipo_id = e.id AND eu2.usuario_id = $3))
       ${condicionesSQL}
       GROUP BY r.id, r.nombre, r.tipo, r.costo, r.moneda
@@ -125,16 +126,17 @@ async function execute(filtros, usuarioId) {
         COUNT(DISTINCT tr.id) as total_asignaciones,
         COUNT(DISTINCT tr.tarea_id) as tareas_asignadas,
         SUM(CASE WHEN tr.estado = 'activo' THEN 1 ELSE 0 END) as asignaciones_activas,
-        AVG(EXTRACT(EPOCH FROM (COALESCE(tr.fecha_fin, CURRENT_DATE) - tr.fecha_inicio))/86400.0)::numeric as promedio_dias_asignacion,
+        AVG(EXTRACT(EPOCH FROM (CURRENT_DATE - tr.fecha_inicio))/86400.0)::numeric as promedio_dias_asignacion,
         SUM(tr.cantidad) as cantidad_total_asignada,
         AVG(tr.evaluacion)::numeric as promedio_evaluacion
       FROM recursos r
       JOIN tarea_recursos tr ON r.id = tr.recurso_id
       JOIN tareas t ON tr.tarea_id = t.id
       JOIN proyectos p ON t.proyecto_id = p.id
-      LEFT JOIN equipos e ON t.equipo_id = e.id
+      LEFT JOIN proyecto_equipos pe ON pe.proyecto_id = p.id
+      LEFT JOIN equipos e ON pe.equipo_id = e.id
       WHERE tr.fecha_inicio >= $1 AND (tr.fecha_fin <= $2 OR tr.fecha_fin IS NULL)
-      AND (r.creado_por = $3 OR e.lider_id = $3 OR p.lider_id = $3 OR t.asignado_a = $3 OR
+      AND (r.creado_por = $3 OR p.creado_por = $3 OR t.asignado_a = $3 OR
            EXISTS (SELECT 1 FROM equipo_usuarios eu WHERE eu.equipo_id = e.id AND eu.usuario_id = $3))
       ${condicionesSQL}
       GROUP BY r.id, r.nombre, r.tipo, r.costo, r.moneda

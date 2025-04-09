@@ -106,16 +106,16 @@ async function execute(filtros, usuarioId) {
         COUNT(DISTINCT CASE WHEN t.estado = 'completada' THEN t.id END) as tareas_completadas,
         COUNT(DISTINCT CASE WHEN t.estado = 'en_progreso' THEN t.id END) as tareas_en_progreso,
         COUNT(DISTINCT CASE WHEN t.estado = 'pendiente' THEN t.id END) as tareas_pendientes,
-        ROUND(AVG(CASE WHEN t.estado = 'completada' THEN EXTRACT(EPOCH FROM (t.fecha_finalizacion - t.fecha_inicio))/86400.0 ELSE NULL END)::numeric, 2) as promedio_dias_tarea,
-        COUNT(DISTINCT r.id) as total_recursos_asignados,
-        ROUND(AVG(CASE WHEN t.puntuacion IS NOT NULL THEN t.puntuacion ELSE NULL END)::numeric, 2) as promedio_puntuacion
+        ROUND(AVG(CASE WHEN t.estado = 'completada' THEN EXTRACT(EPOCH FROM (t.actualizado_en - t.creado_en))/86400.0 ELSE NULL END)::numeric, 2) as promedio_dias_tarea,
+        COUNT(DISTINCT r.id) as total_recursos_asignados
       FROM equipos e
-      JOIN proyectos p ON e.proyecto_id = p.id
+      JOIN proyecto_equipos pe ON e.id = pe.equipo_id
+      JOIN proyectos p ON pe.proyecto_id = p.id
       LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
-      LEFT JOIN tareas t ON e.id = t.equipo_id AND t.fecha_inicio >= $1 AND (t.fecha_finalizacion <= $2 OR t.fecha_finalizacion IS NULL)
+      LEFT JOIN tareas t ON p.id = t.proyecto_id AND t.creado_en >= $1 AND (t.actualizado_en <= $2 OR t.estado != 'completada')
       LEFT JOIN equipo_usuarios eu2 ON e.id = eu2.equipo_id AND eu2.asignado_en >= $1
       LEFT JOIN recursos r ON eu2.recurso_id = r.id
-      WHERE (e.creado_por = $3 OR e.lider_id = $3 OR eu.usuario_id = $3) ${proyectoCondicion}
+      WHERE eu.usuario_id = $3 ${proyectoCondicion}
       GROUP BY e.id, e.nombre, p.id, p.nombre
       ORDER BY tareas_completadas DESC
     `, queryParams);

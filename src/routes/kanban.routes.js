@@ -90,7 +90,7 @@ router.get(
 
 /**
  * @route   GET /api/kanban/columnas/:id
- * @desc    Obtener una columna especu00edfica por ID con sus tareas
+ * @desc    Obtener una columna específica por ID con sus tareas
  * @access  Private
  */
 router.get(
@@ -168,9 +168,9 @@ router.put(
   '/columnas/:id',
   verifyToken,
   [
-    param('id').isUUID().withMessage('ID de columna invu00e1lido'),
+    param('id').isUUID().withMessage('ID de columna invalido'),
     body('nombre').optional().isLength({ max: 255 }).withMessage('El nombre no puede exceder 255 caracteres'),
-    body('posicion').optional().isInt({ min: 0 }).withMessage('La posiciu00f3n debe ser un nu00famero entero no negativo')
+    body('posicion').optional().isInt({ min: 0 }).withMessage('La posicion debe ser un numero entero no negativo')
   ],
   validarErrores,
   async (req, res) => {
@@ -216,9 +216,9 @@ router.delete(
     try {
       logger.info(`Solicitud DELETE /api/kanban/columnas/${req.params.id} de usuario: ${req.user.id}`);
       
-      await eliminarColumnaCommand.execute(req.params.id, req.user.id);
+      const resultado = await eliminarColumnaCommand.execute(req.params.id, req.user.id);
       
-      res.status(204).end();
+      res.status(200).json({ mensaje: resultado.message });
     } catch (error) {
       logger.error(`Error en DELETE /api/kanban/columnas/${req.params.id}: ${error.message}`);
       

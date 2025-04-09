@@ -80,7 +80,11 @@ async function execute(columnaId, usuarioId) {
       `, [columnaExistente.proyecto_id]);
       
       logger.info(`Columna kanban eliminada exitosamente: ID=${columnaId}`);
-      return true;
+      return {
+        success: true,
+        message: `Columna "${columnaExistente.nombre}" eliminada exitosamente`,
+        id: columnaId
+      };
     });
   } catch (error) {
     logger.error(`Error al eliminar columna kanban: ${error.message}`);
