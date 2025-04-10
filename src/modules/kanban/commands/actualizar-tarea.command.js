@@ -113,9 +113,9 @@ async function execute(kanbanTareaId, datosActualizados, usuarioId) {
             WHERE columna_id = $1
           )
           UPDATE kanban_tareas kt
-          SET posicion = to.nueva_posicion
-          FROM tareas_ordenadas to
-          WHERE kt.id = to.id
+          SET posicion = tord.nueva_posicion
+          FROM tareas_ordenadas tord
+          WHERE kt.id = tord.id
         `, [tareaKanban.columna_id]);
       } else if (datosActualizados.posicion !== undefined) {
         // Solo se estu00e1 cambiando la posiciu00f3n dentro de la misma columna

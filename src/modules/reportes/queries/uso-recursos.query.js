@@ -115,33 +115,8 @@ async function execute(filtros, usuarioId) {
       ORDER BY total_asignaciones DESC
     `, queryParams);
     
-    // Obtener uso de recursos en tareas
-    const recursosEnTareas = await db.manyOrNone(`
-      SELECT 
-        r.id as recurso_id,
-        r.nombre as recurso_nombre,
-        r.tipo as recurso_tipo,
-        r.costo as recurso_costo,
-        r.moneda as recurso_moneda,
-        COUNT(DISTINCT tr.id) as total_asignaciones,
-        COUNT(DISTINCT tr.tarea_id) as tareas_asignadas,
-        SUM(CASE WHEN tr.estado = 'activo' THEN 1 ELSE 0 END) as asignaciones_activas,
-        AVG(EXTRACT(EPOCH FROM (CURRENT_DATE - tr.fecha_inicio))/86400.0)::numeric as promedio_dias_asignacion,
-        SUM(tr.cantidad) as cantidad_total_asignada,
-        AVG(tr.evaluacion)::numeric as promedio_evaluacion
-      FROM recursos r
-      JOIN tarea_recursos tr ON r.id = tr.recurso_id
-      JOIN tareas t ON tr.tarea_id = t.id
-      JOIN proyectos p ON t.proyecto_id = p.id
-      LEFT JOIN proyecto_equipos pe ON pe.proyecto_id = p.id
-      LEFT JOIN equipos e ON pe.equipo_id = e.id
-      WHERE tr.fecha_inicio >= $1 AND (tr.fecha_fin <= $2 OR tr.fecha_fin IS NULL)
-      AND (r.creado_por = $3 OR p.creado_por = $3 OR t.asignado_a = $3 OR
-           EXISTS (SELECT 1 FROM equipo_usuarios eu WHERE eu.equipo_id = e.id AND eu.usuario_id = $3))
-      ${condicionesSQL}
-      GROUP BY r.id, r.nombre, r.tipo, r.costo, r.moneda
-      ORDER BY total_asignaciones DESC
-    `, queryParams);
+    // No hay datos de recursos en tareas ya que la tabla tarea_recursos no existe en el esquema
+    const recursosEnTareas = [];
     
     // Consolidar datos y calcular métricas adicionales
     const recursosConsolidados = new Map();

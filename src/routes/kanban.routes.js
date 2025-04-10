@@ -239,7 +239,7 @@ router.delete(
 
 /**
  * @route   GET /api/kanban/tareas/:id
- * @desc    Obtener una tarea kanban especu00edfica por ID
+ * @desc    Obtener una tarea kanban especifica por ID
  * @access  Private
  */
 router.get(
@@ -377,9 +377,9 @@ router.delete(
       
       const eliminarCompleta = req.query.eliminar_completa === 'true';
       
-      await eliminarTareaCommand.execute(req.params.id, eliminarCompleta, req.user.id);
+      const resultado = await eliminarTareaCommand.execute(req.params.id, eliminarCompleta, req.user.id);
       
-      res.status(204).end();
+      res.status(200).json({ mensaje: resultado.message });
     } catch (error) {
       logger.error(`Error en DELETE /api/kanban/tareas/${req.params.id}: ${error.message}`);
       

@@ -68,37 +68,9 @@ async function execute(kanbanTareaId, usuarioId) {
       throw new Error('Tarea kanban no encontrada o sin permisos para acceder');
     }
     
-    // Obtener comentarios de la tarea si existen
-    const comentarios = await db.manyOrNone(`
-      SELECT c.*, u.nombre as autor_nombre, u.email as autor_email
-      FROM comentarios c
-      JOIN usuarios u ON c.usuario_id = u.id
-      WHERE c.tarea_id = $1
-      ORDER BY c.creado_en DESC
-    `, [tarea.tarea_id]);
-    
-    // Obtener archivos adjuntos de la tarea si existen
-    const archivos = await db.manyOrNone(`
-      SELECT * FROM archivos
-      WHERE tarea_id = $1
-      ORDER BY subido_en DESC
-    `, [tarea.tarea_id]);
-    
-    // Obtener historial de cambios de la tarea si existe
-    const historial = await db.manyOrNone(`
-      SELECT h.*, u.nombre as usuario_nombre, u.email as usuario_email
-      FROM historial_tareas h
-      JOIN usuarios u ON h.usuario_id = u.id
-      WHERE h.tarea_id = $1
-      ORDER BY h.fecha DESC
-    `, [tarea.tarea_id]);
-    
     // Construir el objeto de respuesta
     const tareaDetallada = {
       ...tarea,
-      comentarios: comentarios || [],
-      archivos: archivos || [],
-      historial: historial || []
     };
     
     logger.info(`Tarea kanban obtenida exitosamente: ID=${kanbanTareaId}`);

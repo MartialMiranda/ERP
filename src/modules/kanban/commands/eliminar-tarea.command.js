@@ -29,7 +29,7 @@ if (process.env.NODE_ENV !== 'production') {
  * @param {string} kanbanTareaId - ID de la tarea kanban a eliminar
  * @param {boolean} eliminarTareaCompleta - Si es true, elimina tambiu00e9n la tarea asociada, no solo su referencia en el kanban
  * @param {string} usuarioId - ID del usuario que elimina la tarea
- * @returns {Promise<boolean>} - true si la eliminaciu00f3n fue exitosa
+ * @returns {Promise<object>} - objeto con informaciu00f3n sobre la eliminaciu00f3n
  */
 async function execute(kanbanTareaId, eliminarTareaCompleta, usuarioId) {
   try {
@@ -87,13 +87,20 @@ async function execute(kanbanTareaId, eliminarTareaCompleta, usuarioId) {
           WHERE columna_id = $1
         )
         UPDATE kanban_tareas kt
-        SET posicion = to.nueva_posicion
-        FROM tareas_ordenadas to
-        WHERE kt.id = to.id
+        SET posicion = tord.nueva_posicion
+        FROM tareas_ordenadas tord
+        WHERE kt.id = tord.id
       `, [columnaId]);
       
       logger.info(`Tarea kanban eliminada exitosamente: ID=${kanbanTareaId}`);
-      return true;
+      return {
+        success: true,
+        message: eliminarTareaCompleta 
+          ? "Tarea eliminada completamente" 
+          : "Tarea eliminada del tablero Kanban",
+        id: kanbanTareaId,
+        tarea_id: tareaId
+      };
     });
   } catch (error) {
     logger.error(`Error al eliminar tarea kanban: ${error.message}`);
