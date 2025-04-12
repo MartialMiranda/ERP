@@ -277,15 +277,14 @@ router.post(
   '/tareas',
   verifyToken,
   [
-    body('columna_id').isUUID().withMessage('ID de columna invu00e1lido'),
-    body('titulo').notEmpty().withMessage('El tu00edtulo es obligatorio').isLength({ max: 255 }).withMessage('El tu00edtulo no puede exceder 255 caracteres'),
+    body('columna_id').isUUID().withMessage('ID de columna invalido'),
     body('descripcion').optional(),
-    body('prioridad').optional().isIn(['baja', 'media', 'alta', 'urgente']).withMessage('Prioridad invu00e1lida'),
-    body('estado').optional().isIn(['pendiente', 'en progreso', 'completada', 'cancelada']).withMessage('Estado invu00e1lido'),
-    body('fecha_vencimiento').optional().isDate().withMessage('Formato de fecha invu00e1lido'),
-    body('asignado_a').optional().isUUID().withMessage('ID de usuario invu00e1lido'),
-    body('posicion').optional().isInt({ min: 0 }).withMessage('La posiciu00f3n debe ser un nu00famero entero no negativo'),
-    body('tarea_id').optional().isUUID().withMessage('ID de tarea invu00e1lido')
+    body('prioridad').optional().isIn(['baja', 'media', 'alta', 'urgente']).withMessage('Prioridad invalido'),
+    body('estado').optional().isIn(['pendiente', 'en progreso', 'completada', 'cancelada']).withMessage('Estado invalido'),
+    body('fecha_vencimiento').optional().isDate().withMessage('Formato de fecha invalido'),
+    body('asignado_a').optional().isUUID().withMessage('ID de usuario invalido'),
+    body('posicion').optional().isInt({ min: 0 }).withMessage('La posision debe ser un numero entero no negativo'),
+    body('tarea_id').optional().isUUID().withMessage('ID de tarea invalido')
   ],
   validarErrores,
   async (req, res) => {
