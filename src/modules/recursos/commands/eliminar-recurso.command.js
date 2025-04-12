@@ -34,44 +34,58 @@ async function execute(recursoId, usuarioId) {
   try {
     logger.info(`Eliminando recurso: ${recursoId} por usuario: ${usuarioId}`);
     
-    // Verificar que el recurso existe y que el usuario tiene permisos para eliminarlo
+    // Verificar que el recurso existe
     const recurso = await db.oneOrNone(`
-      SELECT * 
-      FROM recursos 
-      WHERE id = $1 AND creado_por = $2
-    `, [recursoId, usuarioId]);
-    
-    if (!recurso) {
-      logger.warn(`Intento de eliminar recurso inexistente o sin permisos: ${recursoId}`);
-      throw new Error('Recurso no encontrado o sin permisos para eliminar');
-    }
-    
-    // Verificar si el recurso está asignado a algún equipo actualmente
-    const asignacionesActivas = await db.oneOrNone(`
-      SELECT COUNT(*) as total
-      FROM recurso_asignaciones
-      WHERE recurso_id = $1 AND (fecha_fin IS NULL OR fecha_fin > CURRENT_DATE)
+      SELECT r.* 
+      FROM recursos r
+      WHERE r.id = $1
     `, [recursoId]);
     
-    if (parseInt(asignacionesActivas.total) > 0) {
-      logger.warn(`No se puede eliminar recurso con asignaciones activas: ${recursoId}`);
-      throw new Error(`No se puede eliminar el recurso porque tiene ${asignacionesActivas.total} asignaciones activas. Finalice las asignaciones primero.`);
+    if (!recurso) {
+      logger.warn(`Recurso no encontrado: ${recursoId}`);
+      throw new Error('Recurso no encontrado');
     }
     
-    // Comenzar una transacción para eliminar el recurso y sus registros relacionados
-    await db.tx(async t => {
-      // 1. Eliminar todas las asignaciones históricas del recurso
-      await t.none(`
-        DELETE FROM recurso_asignaciones 
-        WHERE recurso_id = $1
-      `, [recursoId]);
+    // Verificar permisos - el usuario debe ser creador del proyecto o miembro de un equipo asociado
+    if (recurso.proyecto_id) {
+      const tienePermiso = await db.oneOrNone(`
+        SELECT 1
+        FROM proyectos p
+        WHERE p.id = $1 AND (
+          p.creado_por = $2 OR
+          EXISTS (
+            SELECT 1 
+            FROM proyecto_equipos pe
+            JOIN equipo_usuarios eu ON pe.equipo_id = eu.equipo_id
+            WHERE pe.proyecto_id = p.id AND eu.usuario_id = $2
+          )
+        )
+        LIMIT 1
+      `, [recurso.proyecto_id, usuarioId]);
       
-      // 2. Eliminar el recurso
-      await t.none(`
-        DELETE FROM recursos 
-        WHERE id = $1
-      `, [recursoId]);
-    });
+      if (!tienePermiso) {
+        logger.warn(`Usuario ${usuarioId} sin permisos para eliminar el recurso ${recursoId}`);
+        throw new Error('Sin permisos para eliminar este recurso');
+      }
+    }
+    
+    // Verificar si hay tareas que dependen de este recurso (esto es una validación opcional, ajustar según necesidades)
+    const tareasRelacionadas = await db.oneOrNone(`
+      SELECT COUNT(*) as total
+      FROM tareas
+      WHERE proyecto_id = $1 AND estado != 'completada' AND estado != 'cancelada'
+    `, [recurso.proyecto_id || '00000000-0000-0000-0000-000000000000']);
+    
+    if (parseInt(tareasRelacionadas.total) > 0) {
+      logger.warn(`No se puede eliminar recurso con tareas pendientes: ${recursoId}`);
+      throw new Error(`No se puede eliminar el recurso porque el proyecto tiene ${tareasRelacionadas.total} tareas sin completar. Finalice las tareas primero.`);
+    }
+    
+    // Eliminar el recurso
+    await db.none(`
+      DELETE FROM recursos 
+      WHERE id = $1
+    `, [recursoId]);
     
     logger.info(`Recurso eliminado exitosamente: ID=${recursoId}`);
     

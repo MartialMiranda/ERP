@@ -36,11 +36,8 @@ async function execute(recursoId, usuarioId) {
     
     // Verificar que el recurso existe
     const recurso = await db.oneOrNone(`
-      SELECT r.*, 
-             u.nombre as creador_nombre,
-             u.email as creador_email
+      SELECT r.*
       FROM recursos r
-      LEFT JOIN usuarios u ON r.creado_por = u.id
       WHERE r.id = $1
     `, [recursoId]);
     
@@ -50,82 +47,88 @@ async function execute(recursoId, usuarioId) {
     }
     
     // Verificar que el usuario tiene acceso al recurso
-    // Un usuario tiene acceso si: 
-    // 1. Es el creador del recurso, o
-    // 2. Es miembro o líder de un equipo al que el recurso está asignado
+    // Un usuario tiene acceso si es creador del proyecto o miembro de un equipo asociado al proyecto
     const tieneAcceso = await db.oneOrNone(`
       SELECT 1
       FROM recursos r
+      JOIN proyectos p ON r.proyecto_id = p.id
       WHERE r.id = $1 AND 
       (
-        r.creado_por = $2 OR
+        p.creado_por = $2 OR
         EXISTS (
           SELECT 1 
-          FROM recurso_asignaciones ra
-          JOIN equipos e ON ra.equipo_id = e.id
-          LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
-          WHERE ra.recurso_id = r.id AND (e.lider_id = $2 OR eu.usuario_id = $2)
+          FROM proyecto_equipos pe
+          JOIN equipo_usuarios eu ON pe.equipo_id = eu.equipo_id
+          WHERE pe.proyecto_id = p.id AND eu.usuario_id = $2
         )
       )
       LIMIT 1
     `, [recursoId, usuarioId]);
     
-    if (!tieneAcceso) {
+    if (!tieneAcceso && recurso.proyecto_id) {
       logger.warn(`Usuario ${usuarioId} sin acceso al recurso ${recursoId}`);
       throw new Error('Sin permisos para acceder a este recurso');
     }
     
-    // Obtener todas las asignaciones del recurso
-    const asignaciones = await db.manyOrNone(`
-      SELECT ra.*, 
-             e.nombre as equipo_nombre,
-             p.nombre as proyecto_nombre,
-             p.id as proyecto_id
-      FROM recurso_asignaciones ra
-      JOIN equipos e ON ra.equipo_id = e.id
-      JOIN proyectos p ON e.proyecto_id = p.id
-      WHERE ra.recurso_id = $1
-      ORDER BY 
-        CASE 
-          WHEN ra.fecha_fin IS NULL OR ra.fecha_fin > CURRENT_DATE THEN 0 
-          ELSE 1 
-        END,
-        ra.fecha_inicio DESC
-    `, [recursoId]);
+    // Obtener información del proyecto asociado (si existe)
+    let proyecto = null;
+    if (recurso.proyecto_id) {
+      proyecto = await db.oneOrNone(`
+        SELECT p.*, 
+               u.nombre as creador_nombre, 
+               u.email as creador_email
+        FROM proyectos p
+        LEFT JOIN usuarios u ON p.creado_por = u.id
+        WHERE p.id = $1
+      `, [recurso.proyecto_id]);
+    }
+    
+    // Obtener equipos asociados al proyecto
+    let equipos = [];
+    if (recurso.proyecto_id) {
+      equipos = await db.manyOrNone(`
+        SELECT e.*, pe.creado_en as asignado_en,
+               (
+                 SELECT COUNT(eu.id) 
+                 FROM equipo_usuarios eu 
+                 WHERE eu.equipo_id = e.id
+               ) as total_miembros
+        FROM equipos e
+        JOIN proyecto_equipos pe ON e.id = pe.equipo_id
+        WHERE pe.proyecto_id = $1
+        ORDER BY pe.creado_en DESC
+      `, [recurso.proyecto_id]);
+    }
     
     // Calcular métricas de uso
-    const metricas = await db.oneOrNone(`
+    const estadisticas = await db.oneOrNone(`
       SELECT 
-        COUNT(*) as total_asignaciones,
-        COUNT(CASE WHEN fecha_fin IS NULL OR fecha_fin > CURRENT_DATE THEN 1 END) as asignaciones_activas,
-        COUNT(CASE WHEN fecha_fin IS NOT NULL AND fecha_fin <= CURRENT_DATE THEN 1 END) as asignaciones_completadas,
-        SUM(CASE WHEN fecha_fin IS NULL OR fecha_fin > CURRENT_DATE THEN cantidad ELSE 0 END) as cantidad_asignada,
-        (SELECT COUNT(DISTINCT equipo_id) FROM recurso_asignaciones WHERE recurso_id = $1) as equipos_diferentes
-      FROM recurso_asignaciones
-      WHERE recurso_id = $1
-    `, [recursoId]);
+        COUNT(t.id) as total_tareas,
+        COUNT(CASE WHEN t.estado = 'completada' THEN 1 END) as tareas_completadas,
+        COUNT(CASE WHEN t.estado = 'en progreso' THEN 1 END) as tareas_en_progreso,
+        COUNT(CASE WHEN t.estado = 'pendiente' THEN 1 END) as tareas_pendientes
+      FROM tareas t
+      WHERE t.proyecto_id = $1
+    `, [recurso.proyecto_id || '00000000-0000-0000-0000-000000000000']);
     
     // Construir el objeto de respuesta
     const recursoDetallado = {
       ...recurso,
-      asignaciones: asignaciones || [],
-      metricas: metricas || {
-        total_asignaciones: 0,
-        asignaciones_activas: 0,
-        asignaciones_completadas: 0,
-        cantidad_asignada: 0,
-        equipos_diferentes: 0
+      proyecto: proyecto,
+      equipos: equipos || [],
+      estadisticas: estadisticas || {
+        total_tareas: 0,
+        tareas_completadas: 0,
+        tareas_en_progreso: 0,
+        tareas_pendientes: 0
       }
     };
     
-    // Calcular la disponibilidad efectiva basada en asignaciones activas
-    if (parseInt(metricas.asignaciones_activas) > 0) {
-      recursoDetallado.disponibilidad_efectiva = 'parcial';
-      if (parseInt(metricas.cantidad_asignada) >= 1 && recurso.tipo !== 'material') {
-        recursoDetallado.disponibilidad_efectiva = 'no disponible';
-      }
+    // Calcular la disponibilidad basada en la cantidad
+    if (recurso.cantidad > 0) {
+      recursoDetallado.disponibilidad = 'disponible';
     } else {
-      recursoDetallado.disponibilidad_efectiva = 'disponible';
+      recursoDetallado.disponibilidad = 'agotado';
     }
     
     logger.info(`Recurso obtenido exitosamente: ID=${recursoId}`);

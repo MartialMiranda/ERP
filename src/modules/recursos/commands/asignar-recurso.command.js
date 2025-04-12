@@ -1,5 +1,5 @@
 /**
- * Comando para asignar un recurso a un equipo
+ * Comando para asignar un recurso a un proyecto
  * Siguiendo el patrón CQRS para separar operaciones de escritura
  */
 const { db } = require('../../../config/database');
@@ -26,14 +26,14 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 /**
- * Ejecuta el comando para asignar un recurso a un equipo
- * @param {Object} asignacion - Datos de la asignación
+ * Ejecuta el comando para asignar un recurso a un proyecto
+ * @param {Object} asignacion - Datos de la asignación (proyecto_id, recurso_id, cantidad)
  * @param {string} usuarioId - ID del usuario que realiza la asignación
- * @returns {Promise<Object>} - Asignación creada
+ * @returns {Promise<Object>} - Recurso actualizado
  */
 async function execute(asignacion, usuarioId) {
   try {
-    logger.info(`Asignando recurso: ${asignacion.recurso_id} al equipo: ${asignacion.equipo_id} por usuario: ${usuarioId}`);
+    logger.info(`Asignando recurso: ${asignacion.recurso_id} al proyecto: ${asignacion.proyecto_id} por usuario: ${usuarioId}`);
     
     // Verificar que el recurso existe
     const recurso = await db.oneOrNone(`
@@ -45,111 +45,93 @@ async function execute(asignacion, usuarioId) {
       throw new Error('Recurso no encontrado');
     }
     
-    // Verificar que el equipo existe
-    const equipo = await db.oneOrNone(`
-      SELECT * FROM equipos WHERE id = $1
-    `, [asignacion.equipo_id]);
+    // Verificar que el proyecto existe
+    const proyecto = await db.oneOrNone(`
+      SELECT * FROM proyectos WHERE id = $1
+    `, [asignacion.proyecto_id]);
     
-    if (!equipo) {
-      logger.warn(`Equipo no encontrado: ${asignacion.equipo_id}`);
-      throw new Error('Equipo no encontrado');
+    if (!proyecto) {
+      logger.warn(`Proyecto no encontrado: ${asignacion.proyecto_id}`);
+      throw new Error('Proyecto no encontrado');
     }
     
-    // Verificar que el usuario tiene permiso para asignar recursos a este equipo
-    // (debe ser el creador del recurso, el líder del equipo o un administrador)
+    // Verificar que el usuario tiene permiso para asignar recursos a este proyecto
+    // (debe ser el creador del proyecto o miembro de algún equipo asociado)
     const tienePermiso = await db.oneOrNone(`
-      SELECT 1 
-      FROM equipos e 
-      JOIN recursos r ON 1=1
-      WHERE e.id = $1 AND r.id = $2 AND (e.lider_id = $3 OR r.creado_por = $3)
+      SELECT 1
+      FROM proyectos p
+      WHERE p.id = $1 AND (
+        p.creado_por = $2 OR
+        EXISTS (
+          SELECT 1 
+          FROM proyecto_equipos pe
+          JOIN equipo_usuarios eu ON pe.equipo_id = eu.equipo_id
+          WHERE pe.proyecto_id = p.id AND eu.usuario_id = $2
+        )
+      )
       LIMIT 1
-    `, [asignacion.equipo_id, asignacion.recurso_id, usuarioId]);
+    `, [asignacion.proyecto_id, usuarioId]);
     
     if (!tienePermiso) {
-      logger.warn(`Usuario ${usuarioId} sin permiso para asignar recurso ${asignacion.recurso_id} al equipo ${asignacion.equipo_id}`);
-      throw new Error('Sin permisos para asignar este recurso a este equipo');
+      logger.warn(`Usuario ${usuarioId} sin permiso para asignar recursos al proyecto ${asignacion.proyecto_id}`);
+      throw new Error('Sin permisos para asignar recursos a este proyecto');
     }
     
-    // Verificar la disponibilidad del recurso si no es tipo 'material'
-    if (recurso.tipo !== 'material') {
-      const asignacionesActivas = await db.oneOrNone(`
-        SELECT COUNT(*) as total 
-        FROM recurso_asignaciones 
-        WHERE recurso_id = $1 AND (fecha_fin IS NULL OR fecha_fin > CURRENT_DATE)
-      `, [asignacion.recurso_id]);
+    // Verificar si el recurso ya está asignado a otro proyecto
+    if (recurso.proyecto_id && recurso.proyecto_id !== asignacion.proyecto_id) {
+      const proyectoActual = await db.oneOrNone(`
+        SELECT nombre FROM proyectos WHERE id = $1
+      `, [recurso.proyecto_id]);
       
-      if (parseInt(asignacionesActivas.total) > 0) {
-        logger.warn(`Recurso ${asignacion.recurso_id} ya asignado y no es de tipo material`);
-        throw new Error('Este recurso ya está asignado y no es de tipo material que permita múltiples asignaciones');
-      }
+      logger.warn(`Recurso ${asignacion.recurso_id} ya asignado al proyecto ${recurso.proyecto_id}`);
+      throw new Error(`Este recurso ya está asignado al proyecto "${proyectoActual.nombre}". Desasigne primero.`);
     }
     
-    // Preparar los datos de la asignación
-    const asignacionId = uuidv4();
-    const fechaInicio = asignacion.fecha_inicio ? new Date(asignacion.fecha_inicio) : new Date();
-    const fechaFin = asignacion.fecha_fin ? new Date(asignacion.fecha_fin) : null;
-    
-    // Validar las fechas
-    if (fechaFin && fechaInicio > fechaFin) {
-      logger.warn(`Fechas inválidas: inicio ${fechaInicio} posterior a fin ${fechaFin}`);
-      throw new Error('La fecha de inicio no puede ser posterior a la fecha de fin');
-    }
-    
-    // Crear la asignación
+    // Actualizar la asignación del recurso al proyecto
     await db.none(`
-      INSERT INTO recurso_asignaciones (
-        id, recurso_id, equipo_id, 
-        cantidad, fecha_inicio, fecha_fin,
-        notas, creado_por, creado_en, actualizado_en
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
-      )
+      UPDATE recursos 
+      SET proyecto_id = $1, 
+          cantidad = $2, 
+          actualizado_en = CURRENT_TIMESTAMP 
+      WHERE id = $3
     `, [
-      asignacionId,
-      asignacion.recurso_id,
-      asignacion.equipo_id,
-      asignacion.cantidad || 1,
-      fechaInicio,
-      fechaFin,
-      asignacion.notas || null,
-      usuarioId,
-      new Date(),
-      new Date()
+      asignacion.proyecto_id,
+      asignacion.cantidad || recurso.cantidad,
+      asignacion.recurso_id
     ]);
     
-    // Actualizar la disponibilidad del recurso si es necesario
-    if (recurso.tipo !== 'material' || (recurso.tipo === 'material' && asignacion.cantidad >= recurso.propiedades.cantidad_total)) {
-      await db.none(`
-        UPDATE recursos 
-        SET disponibilidad = 'no disponible', actualizado_en = CURRENT_TIMESTAMP 
-        WHERE id = $1
-      `, [asignacion.recurso_id]);
-      
-      logger.info(`Actualizada disponibilidad del recurso ${asignacion.recurso_id} a 'no disponible'`);
-    } else if (recurso.disponibilidad === 'disponible') {
-      await db.none(`
-        UPDATE recursos 
-        SET disponibilidad = 'parcial', actualizado_en = CURRENT_TIMESTAMP 
-        WHERE id = $1
-      `, [asignacion.recurso_id]);
-      
-      logger.info(`Actualizada disponibilidad del recurso ${asignacion.recurso_id} a 'parcial'`);
-    }
+    // Recuperar el recurso actualizado
+    const recursoActualizado = await db.one(`
+      SELECT r.*, p.nombre as proyecto_nombre
+      FROM recursos r
+      JOIN proyectos p ON r.proyecto_id = p.id
+      WHERE r.id = $1
+    `, [asignacion.recurso_id]);
     
-    // Recuperar la asignación creada para devolverla
-    const asignacionCreada = await db.one(`
-      SELECT ra.*, 
-             r.nombre as recurso_nombre, r.tipo as recurso_tipo,
-             e.nombre as equipo_nombre
-      FROM recurso_asignaciones ra
-      JOIN recursos r ON ra.recurso_id = r.id
-      JOIN equipos e ON ra.equipo_id = e.id
-      WHERE ra.id = $1
-    `, [asignacionId]);
+    // Obtener equipos asociados al proyecto
+    const equiposProyecto = await db.manyOrNone(`
+      SELECT e.id, e.nombre, 
+             (
+               SELECT COUNT(eu.id) 
+               FROM equipo_usuarios eu 
+               WHERE eu.equipo_id = e.id
+             ) as total_miembros
+      FROM equipos e
+      JOIN proyecto_equipos pe ON e.id = pe.equipo_id
+      WHERE pe.proyecto_id = $1
+      ORDER BY e.nombre ASC
+    `, [asignacion.proyecto_id]);
     
-    logger.info(`Asignación creada exitosamente: ID=${asignacionId}`);
+    logger.info(`Recurso asignado exitosamente al proyecto: ${asignacion.proyecto_id}`);
     
-    return asignacionCreada;
+    // Construir respuesta
+    const resultado = {
+      ...recursoActualizado,
+      disponibilidad: recursoActualizado.cantidad > 0 ? 'disponible' : 'agotado',
+      equipos_proyecto: equiposProyecto || []
+    };
+    
+    return resultado;
   } catch (error) {
     logger.error(`Error al asignar recurso: ${error.message}`);
     throw error;

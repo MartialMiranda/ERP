@@ -72,10 +72,10 @@ async function execute(filtros, usuarioId) {
     let condiciones = [];
     let paramCount = 4;
     
-    // Filtrar por tipo de recurso
+    // Si se especifica un nombre de recurso para filtrar
     if (filtros.tipo) {
-      condiciones.push(`r.tipo = $${paramCount}`);
-      queryParams.push(filtros.tipo);
+      condiciones.push(`r.nombre ILIKE $${paramCount}`);
+      queryParams.push(`%${filtros.tipo}%`);
       paramCount++;
     }
     
@@ -89,125 +89,60 @@ async function execute(filtros, usuarioId) {
     // Combinar condiciones
     const condicionesSQL = condiciones.length > 0 ? `AND ${condiciones.join(' AND ')}` : '';
     
-    // Obtener uso de recursos en equipos
-    const recursosEnEquipos = await db.manyOrNone(`
+    // Obtener recursos y su uso
+    const recursos = await db.manyOrNone(`
       SELECT 
-        r.id as recurso_id,
-        r.nombre as recurso_nombre,
-        r.tipo as recurso_tipo,
-        r.costo as recurso_costo,
-        r.moneda as recurso_moneda,
-        COUNT(DISTINCT eu.id) as total_asignaciones,
-        COUNT(DISTINCT eu.equipo_id) as equipos_asignados,
-        COUNT(DISTINCT eu.id) as asignaciones_activas,
-        AVG(EXTRACT(EPOCH FROM (CURRENT_DATE - eu.asignado_en))/86400.0)::numeric as promedio_dias_asignacion,
-        COUNT(DISTINCT r.id) as cantidad_total_asignada
+        r.id,
+        r.nombre,
+        r.descripcion,
+        r.cantidad,
+        r.creado_en,
+        r.actualizado_en,
+        p.id as proyecto_id,
+        p.nombre as proyecto_nombre,
+        COUNT(DISTINCT t.id) as tareas_asociadas
       FROM recursos r
-      JOIN equipo_usuarios eu ON r.id = eu.recurso_id
-      JOIN equipos e ON eu.equipo_id = e.id
-      JOIN proyecto_equipos pe ON e.id = pe.equipo_id
-      JOIN proyectos p ON pe.proyecto_id = p.id
-      WHERE eu.asignado_en >= $1
-      AND (r.creado_por = $3 OR p.creado_por = $3 OR
-           EXISTS (SELECT 1 FROM equipo_usuarios eu2 WHERE eu2.equipo_id = e.id AND eu2.usuario_id = $3))
+      JOIN proyectos p ON r.proyecto_id = p.id
+      LEFT JOIN tareas t ON t.proyecto_id = p.id
+      WHERE r.creado_en >= $1
+      AND r.actualizado_en <= $2
+      AND (p.creado_por = $3 OR
+           EXISTS (SELECT 1 FROM equipo_usuarios eu 
+                  JOIN equipos e ON eu.equipo_id = e.id
+                  JOIN proyecto_equipos pe ON e.id = pe.equipo_id
+                  WHERE pe.proyecto_id = p.id AND eu.usuario_id = $3))
       ${condicionesSQL}
-      GROUP BY r.id, r.nombre, r.tipo, r.costo, r.moneda
-      ORDER BY total_asignaciones DESC
+      GROUP BY r.id, r.nombre, r.descripcion, r.cantidad, r.creado_en, r.actualizado_en, p.id, p.nombre
+      ORDER BY tareas_asociadas DESC
     `, queryParams);
     
-    // No hay datos de recursos en tareas ya que la tabla tarea_recursos no existe en el esquema
-    const recursosEnTareas = [];
+    // Calcular métricas generales
+    const totalRecursos = recursos.length;
+    const totalCantidad = recursos.reduce((sum, r) => sum + parseInt(r.cantidad || 1), 0);
+    const recursosPorProyecto = {};
     
-    // Consolidar datos y calcular métricas adicionales
-    const recursosConsolidados = new Map();
-    
-    // Procesar recursos asignados a equipos
-    for (const recurso of recursosEnEquipos) {
-      recurso.tipo_asignacion = 'equipo';
-      recurso.promedio_dias_asignacion = parseFloat(recurso.promedio_dias_asignacion).toFixed(2);
-      
-      if (!recursosConsolidados.has(recurso.recurso_id)) {
-        recursosConsolidados.set(recurso.recurso_id, {
-          ...recurso,
-          asignaciones_equipos: parseInt(recurso.total_asignaciones),
-          asignaciones_tareas: 0,
-          costo_total: parseFloat(recurso.recurso_costo) * parseInt(recurso.cantidad_total_asignada)
-        });
-      }
-    }
-    
-    // Procesar recursos asignados a tareas
-    for (const recurso of recursosEnTareas) {
-      recurso.tipo_asignacion = 'tarea';
-      recurso.promedio_dias_asignacion = parseFloat(recurso.promedio_dias_asignacion).toFixed(2);
-      recurso.promedio_evaluacion = recurso.promedio_evaluacion ? parseFloat(recurso.promedio_evaluacion).toFixed(1) : null;
-      
-      if (recursosConsolidados.has(recurso.recurso_id)) {
-        const recursoConsolidado = recursosConsolidados.get(recurso.recurso_id);
-        recursoConsolidado.asignaciones_tareas = parseInt(recurso.total_asignaciones);
-        recursoConsolidado.tareas_asignadas = parseInt(recurso.tareas_asignadas);
-        recursoConsolidado.promedio_evaluacion = recurso.promedio_evaluacion;
-        recursoConsolidado.costo_total += parseFloat(recurso.recurso_costo) * parseInt(recurso.cantidad_total_asignada);
-      } else {
-        recursosConsolidados.set(recurso.recurso_id, {
-          ...recurso,
-          asignaciones_equipos: 0,
-          asignaciones_tareas: parseInt(recurso.total_asignaciones),
-          costo_total: parseFloat(recurso.recurso_costo) * parseInt(recurso.cantidad_total_asignada)
-        });
-      }
-    }
-    
-    // Convertir Map a Array
-    const recursos = Array.from(recursosConsolidados.values()).map(recurso => ({
-      ...recurso,
-      asignaciones_totales: recurso.asignaciones_equipos + recurso.asignaciones_tareas,
-      costo_total: parseFloat(recurso.costo_total).toFixed(2)
-    }));
-    
-    // Ordenar por total de asignaciones (descendente)
-    recursos.sort((a, b) => b.asignaciones_totales - a.asignaciones_totales);
-    
-    // Calcular estadísticas por tipo de recurso
-    const estadisticasPorTipo = {};
-    
+    // Agrupar recursos por proyecto
     for (const recurso of recursos) {
-      if (!estadisticasPorTipo[recurso.recurso_tipo]) {
-        estadisticasPorTipo[recurso.recurso_tipo] = {
+      if (!recursosPorProyecto[recurso.proyecto_id]) {
+        recursosPorProyecto[recurso.proyecto_id] = {
+          proyecto_id: recurso.proyecto_id,
+          proyecto_nombre: recurso.proyecto_nombre,
           total_recursos: 0,
-          total_asignaciones: 0,
-          costo_total: 0,
-          asignaciones_activas: 0
+          recursos: []
         };
       }
       
-      estadisticasPorTipo[recurso.recurso_tipo].total_recursos++;
-      estadisticasPorTipo[recurso.recurso_tipo].total_asignaciones += recurso.asignaciones_totales;
-      estadisticasPorTipo[recurso.recurso_tipo].costo_total += parseFloat(recurso.costo_total);
-      estadisticasPorTipo[recurso.recurso_tipo].asignaciones_activas += parseInt(recurso.asignaciones_activas || 0);
+      recursosPorProyecto[recurso.proyecto_id].total_recursos++;
+      recursosPorProyecto[recurso.proyecto_id].recursos.push(recurso);
     }
-    
-    // Formatear costos totales
-    Object.keys(estadisticasPorTipo).forEach(tipo => {
-      estadisticasPorTipo[tipo].costo_total = parseFloat(estadisticasPorTipo[tipo].costo_total).toFixed(2);
-    });
     
     // Calcular resumen general
     const resumenGeneral = {
-      total_recursos: recursos.length,
-      total_asignaciones: recursos.reduce((sum, r) => sum + r.asignaciones_totales, 0),
+      total_recursos: totalRecursos,
+      total_cantidad: totalCantidad,
       recursos_mas_utilizados: recursos.slice(0, 5),
-      costo_total: parseFloat(recursos.reduce((sum, r) => sum + parseFloat(r.costo_total), 0)).toFixed(2),
-      recurso_mejor_evaluado: null
+      total_proyectos_con_recursos: Object.keys(recursosPorProyecto).length
     };
-    
-    // Encontrar el recurso mejor evaluado
-    const recursosConEvaluacion = recursos.filter(r => r.promedio_evaluacion);
-    if (recursosConEvaluacion.length > 0) {
-      resumenGeneral.recurso_mejor_evaluado = recursosConEvaluacion.sort(
-        (a, b) => parseFloat(b.promedio_evaluacion) - parseFloat(a.promedio_evaluacion)
-      )[0];
-    }
     
     // Resultados del informe
     const resultado = {
@@ -217,7 +152,7 @@ async function execute(filtros, usuarioId) {
         descripcion: filtros.periodo || 'personalizado'
       },
       resumen: resumenGeneral,
-      estadisticas_por_tipo: estadisticasPorTipo,
+      recursos_por_proyecto: Object.values(recursosPorProyecto),
       recursos: recursos,
       generado_en: new Date()
     };

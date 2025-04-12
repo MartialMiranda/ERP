@@ -6,7 +6,7 @@ const express = require('express');
 const { query, param, validationResult } = require('express-validator');
 const rendimientoEquiposQuery = require('../modules/reportes/queries/rendimiento-equipos.query');
 const usoRecursosQuery = require('../modules/reportes/queries/uso-recursos.query');
-const reporteCostoProyectoQuery = require('../modules/reportes/queries/reporte-costo-proyecto.query');
+const progresoTareasQuery = require('../modules/reportes/queries/progreso-tareas.query');
 const { verifyToken } = require('../middleware/auth.middleware');
 const winston = require('winston');
 const { ForbiddenError } = require('../utils/errors');
@@ -102,7 +102,7 @@ router.get(
   verifyToken,
   [
     query('proyecto_id').optional().isUUID().withMessage('ID de proyecto inválido'),
-    query('tipo').optional().isIn(['humano', 'material', 'tecnologico', 'financiero']).withMessage('Tipo de recurso inválido'),
+    query('tipo').optional().isString().withMessage('Filtro de recurso inválido'),
     query('periodo').optional().isIn(['semana', 'mes', 'trimestre', 'semestre', 'año', 'personalizado']).withMessage('Período inválido'),
     query('fecha_inicio').optional().isISO8601().withMessage('Formato de fecha inválido para fecha de inicio'),
     query('fecha_fin').optional().isISO8601().withMessage('Formato de fecha inválido para fecha de fin')
@@ -142,38 +142,40 @@ router.get(
 );
 
 /**
- * @route   GET /api/reportes/proyectos/:id/costo
- * @desc    Generar informe de costo de un proyecto específico
+ * @route   GET /api/reportes/progreso-tareas
+ * @desc    Generar informe de progreso de tareas
  * @access  Private
  */
 router.get(
-  '/proyectos/:id/costo',
+  '/progreso-tareas',
   verifyToken,
   [
-    param('id').isUUID().withMessage('ID de proyecto inválido'),
-    query('incluirRecursos').optional().isBoolean().withMessage('incluirRecursos debe ser un valor booleano'),
-    query('incluirPersonal').optional().isBoolean().withMessage('incluirPersonal debe ser un valor booleano'),
-    query('desglosar_por').optional().isIn(['equipo', 'tipo', 'ninguno']).withMessage('Tipo de desglose inválido')
+    query('proyecto_id').optional().isUUID().withMessage('ID de proyecto inválido'),
+    query('tarea_id').optional().isUUID().withMessage('ID de tarea inválido'),
+    query('periodo').optional().isIn(['semana', 'mes', 'trimestre', 'semestre', 'año', 'personalizado']).withMessage('Período inválido'),
+    query('fecha_inicio').optional().isISO8601().withMessage('Formato de fecha inválido para fecha de inicio'),
+    query('fecha_fin').optional().isISO8601().withMessage('Formato de fecha inválido para fecha de fin')
   ],
   validarErrores,
   async (req, res) => {
     try {
-      logger.info(`Solicitud GET /api/reportes/proyectos/${req.params.id}/costo de usuario: ${req.user.id}`);
+      logger.info(`Solicitud GET /api/reportes/progreso-tareas de usuario: ${req.user.id}`);
       
-      // Construir parámetros desde la petición
-      const params = {
-        proyectoId: req.params.id,
-        incluirRecursos: req.query.incluirRecursos !== 'false',
-        incluirPersonal: req.query.incluirPersonal !== 'false',
-        desglosarPor: req.query.desglosar_por || 'ninguno'
+      // Construir filtros desde parámetros de consulta
+      const filtros = {
+        proyecto_id: req.query.proyecto_id,
+        tarea_id: req.query.tarea_id,
+        periodo: req.query.periodo || 'mes',
+        fecha_inicio: req.query.fecha_inicio,
+        fecha_fin: req.query.fecha_fin
       };
       
       // Generar informe mediante la consulta
-      const informe = await reporteCostoProyectoQuery.execute(params);
+      const informe = await progresoTareasQuery.execute(filtros, req.user.id);
       
       res.json(informe);
     } catch (error) {
-      logger.error(`Error en GET /api/reportes/proyectos/${req.params.id}/costo: ${error.message}`);
+      logger.error(`Error en GET /api/reportes/progreso-tareas: ${error.message}`);
       
       if (error.message.includes('Sin permisos') || error.message.includes('sin permisos')) {
         return res.status(403).json({ error: error.message });
@@ -183,7 +185,7 @@ router.get(
         return res.status(404).json({ error: error.message });
       }
       
-      res.status(500).json({ error: 'Error al generar el informe de costo del proyecto' });
+      res.status(500).json({ error: 'Error al generar el informe de progreso de tareas' });
     }
   }
 );
@@ -204,8 +206,8 @@ router.get(
       logger.info(`Solicitud GET /api/reportes/exportar/${tipoInforme} en formato ${formatoExportacion} de usuario: ${req.user.id}`);
       
       // Validar tipo de informe
-      if (!['equipos', 'recursos'].includes(tipoInforme)) {
-        return res.status(400).json({ error: 'Tipo de informe inválido. Debe ser "equipos" o "recursos"' });
+      if (!['equipos', 'recursos', 'progreso-tareas'].includes(tipoInforme)) {
+        return res.status(400).json({ error: 'Tipo de informe inválido. Debe ser "equipos", "recursos" o "progreso-tareas"' });
       }
       
       // Validar formato de exportación
@@ -217,6 +219,7 @@ router.get(
       let informe;
       const filtros = {
         proyecto_id: req.query.proyecto_id,
+        tarea_id: req.query.tarea_id,
         tipo: req.query.tipo,
         periodo: req.query.periodo || 'mes',
         fecha_inicio: req.query.fecha_inicio,
@@ -225,23 +228,47 @@ router.get(
       
       if (tipoInforme === 'equipos') {
         informe = await rendimientoEquiposQuery.execute(filtros, req.user.id);
-      } else {
+      } else if (tipoInforme === 'recursos') {
         informe = await usoRecursosQuery.execute(filtros, req.user.id);
+      } else if (tipoInforme === 'progreso-tareas') {
+        informe = await progresoTareasQuery.execute(filtros, req.user.id);
       }
       
       // Implementación simple de exportación a CSV
       if (formatoExportacion === 'csv') {
         // Función para convertir datos a CSV
         const convertirACSV = (data) => {
-          if (!data || !data.items) {
+          // Determinar qué datos exportar según el tipo de informe
+          let items = [];
+          
+          if (tipoInforme === 'equipos') {
+            items = data.equipos || [];
+          } else if (tipoInforme === 'recursos') {
+            items = data.recursos || [];
+          } else if (tipoInforme === 'progreso-tareas') {
+            // Para progreso de tareas, exportar cada reporte de progreso
+            const todasLasTareas = data.tareas || [];
+            items = todasLasTareas.reduce((acc, tarea) => {
+              const reportesTarea = (tarea.reportes || []).map(reporte => ({
+                tarea_id: tarea.tarea_id,
+                tarea_titulo: tarea.tarea_titulo,
+                proyecto_id: tarea.proyecto_id,
+                proyecto_nombre: tarea.proyecto_nombre,
+                ...reporte
+              }));
+              return [...acc, ...reportesTarea];
+            }, []);
+          }
+          
+          if (!items || items.length === 0) {
             return 'No hay datos disponibles';
           }
           
           // Obtener las cabeceras del primer elemento
-          const headers = Object.keys(data.items[0] || {}).join(',');
+          const headers = Object.keys(items[0] || {}).join(',');
           
           // Generar las filas
-          const rows = data.items.map(item => {
+          const rows = items.map(item => {
             return Object.values(item).map(val => {
               // Manejar valores especiales
               if (val === null || val === undefined) return '';

@@ -7,8 +7,10 @@ const { body, param, query, validationResult } = require('express-validator');
 const crearTareaCommand = require('../modules/tareas/commands/crear-tarea.command');
 const actualizarTareaCommand = require('../modules/tareas/commands/actualizar-tarea.command');
 const eliminarTareaCommand = require('../modules/tareas/commands/eliminar-tarea.command');
+const reportarProgresoCommand = require('../modules/tareas/commands/reportar-progreso.command');
 const obtenerTareasQuery = require('../modules/tareas/queries/obtener-tareas.query');
 const obtenerTareaQuery = require('../modules/tareas/queries/obtener-tarea.query');
+const obtenerProgresoTareaQuery = require('../modules/tareas/queries/obtener-progreso-tarea.query');
 const { verifyToken } = require('../middleware/auth.middleware');
 const winston = require('winston');
 
@@ -246,6 +248,91 @@ router.delete(
       }
       
       res.status(500).json({ error: 'Error al eliminar la tarea' });
+    }
+  }
+);
+
+/**
+ * @route   POST /api/tareas/:id/progreso
+ * @desc    Reportar progreso de una tarea
+ * @access  Private
+ */
+router.post(
+  '/:id/progreso',
+  verifyToken,
+  [
+    param('id').isUUID().withMessage('ID de tarea inválido'),
+    body('comentario').notEmpty().withMessage('El comentario es obligatorio'),
+    body('progreso_porcentaje').isInt({ min: 0, max: 100 }).withMessage('El porcentaje debe estar entre 0 y 100')
+  ],
+  validarErrores,
+  async (req, res) => {
+    try {
+      logger.info(`Solicitud POST /api/tareas/${req.params.id}/progreso de usuario: ${req.user.id}`);
+      
+      const { comentario, progreso_porcentaje } = req.body;
+      
+      const reporte = await reportarProgresoCommand.execute(
+        req.params.id,
+        { comentario, progreso_porcentaje },
+        req.user.id
+      );
+      
+      res.status(201).json(reporte);
+    } catch (error) {
+      logger.error(`Error en POST /api/tareas/${req.params.id}/progreso: ${error.message}`);
+      
+      if (error.message.includes('no encontrada') || error.message.includes('No tienes permisos')) {
+        return res.status(403).json({ error: error.message });
+      }
+      
+      if (error.message.includes('progreso debe estar entre')) {
+        return res.status(400).json({ error: error.message });
+      }
+      
+      res.status(500).json({ error: 'Error al reportar progreso de la tarea' });
+    }
+  }
+);
+
+/**
+ * @route   GET /api/tareas/:id/progreso
+ * @desc    Obtener historial de progreso de una tarea
+ * @access  Private
+ */
+router.get(
+  '/:id/progreso',
+  verifyToken,
+  [
+    param('id').isUUID().withMessage('ID de tarea inválido'),
+    query('pagina').optional().isInt({ min: 1 }).withMessage('La página debe ser un número entero positivo'),
+    query('por_pagina').optional().isInt({ min: 1, max: 50 }).withMessage('Items por página debe ser entre 1 y 50')
+  ],
+  validarErrores,
+  async (req, res) => {
+    try {
+      logger.info(`Solicitud GET /api/tareas/${req.params.id}/progreso de usuario: ${req.user.id}`);
+      
+      const opciones = {
+        pagina: req.query.pagina ? parseInt(req.query.pagina) : 1,
+        por_pagina: req.query.por_pagina ? parseInt(req.query.por_pagina) : 10
+      };
+      
+      const historialProgreso = await obtenerProgresoTareaQuery.execute(
+        req.params.id,
+        req.user.id,
+        opciones
+      );
+      
+      res.json(historialProgreso);
+    } catch (error) {
+      logger.error(`Error en GET /api/tareas/${req.params.id}/progreso: ${error.message}`);
+      
+      if (error.message.includes('no encontrada') || error.message.includes('No tienes permisos')) {
+        return res.status(403).json({ error: error.message });
+      }
+      
+      res.status(500).json({ error: 'Error al obtener historial de progreso' });
     }
   }
 );

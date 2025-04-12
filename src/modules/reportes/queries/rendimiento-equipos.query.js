@@ -39,10 +39,10 @@ async function execute(filtros, usuarioId) {
       const tieneAcceso = await db.oneOrNone(`
         SELECT 1
         FROM proyectos p
-        LEFT JOIN equipo_usuarios eu ON eu.equipo_id IN (
-          SELECT id FROM equipos WHERE proyecto_id = p.id
-        )
-        WHERE p.id = $1 AND (p.creado_por = $2 OR p.lider_id = $2 OR eu.usuario_id = $2)
+        LEFT JOIN proyecto_equipos pe ON pe.proyecto_id = p.id
+        LEFT JOIN equipos e ON e.id = pe.equipo_id
+        LEFT JOIN equipo_usuarios eu ON eu.equipo_id = e.id
+        WHERE p.id = $1 AND (p.creado_por = $2 OR eu.usuario_id = $2)
         LIMIT 1
       `, [filtros.proyecto_id, usuarioId]);
       
@@ -91,7 +91,7 @@ async function execute(filtros, usuarioId) {
     
     if (filtros.proyecto_id) {
       queryParams.push(filtros.proyecto_id);
-      proyectoCondicion = 'AND e.proyecto_id = $4';
+      proyectoCondicion = 'AND p.id = $4';
     }
     
     // Consulta para obtener métricas por equipo
@@ -99,24 +99,21 @@ async function execute(filtros, usuarioId) {
       SELECT 
         e.id as equipo_id,
         e.nombre as equipo_nombre,
-        p.id as proyecto_id,
-        p.nombre as proyecto_nombre,
         COUNT(DISTINCT eu.usuario_id) as total_miembros,
         COUNT(DISTINCT t.id) as total_tareas,
         COUNT(DISTINCT CASE WHEN t.estado = 'completada' THEN t.id END) as tareas_completadas,
         COUNT(DISTINCT CASE WHEN t.estado = 'en_progreso' THEN t.id END) as tareas_en_progreso,
         COUNT(DISTINCT CASE WHEN t.estado = 'pendiente' THEN t.id END) as tareas_pendientes,
         ROUND(AVG(CASE WHEN t.estado = 'completada' THEN EXTRACT(EPOCH FROM (t.actualizado_en - t.creado_en))/86400.0 ELSE NULL END)::numeric, 2) as promedio_dias_tarea,
-        COUNT(DISTINCT r.id) as total_recursos_asignados
+        COUNT(DISTINCT r.id) as total_recursos
       FROM equipos e
       JOIN proyecto_equipos pe ON e.id = pe.equipo_id
       JOIN proyectos p ON pe.proyecto_id = p.id
-      LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
-      LEFT JOIN tareas t ON p.id = t.proyecto_id AND t.creado_en >= $1 AND (t.actualizado_en <= $2 OR t.estado != 'completada')
-      LEFT JOIN equipo_usuarios eu2 ON e.id = eu2.equipo_id AND eu2.asignado_en >= $1
-      LEFT JOIN recursos r ON eu2.recurso_id = r.id
-      WHERE eu.usuario_id = $3 ${proyectoCondicion}
-      GROUP BY e.id, e.nombre, p.id, p.nombre
+      LEFT JOIN equipo_usuarios eu ON eu.equipo_id = e.id
+      LEFT JOIN tareas t ON t.proyecto_id = p.id AND t.creado_en >= $1 AND (t.actualizado_en <= $2 OR t.estado != 'completada')
+      LEFT JOIN recursos r ON r.proyecto_id = p.id
+      WHERE (p.creado_por = $3 OR eu.usuario_id = $3) ${proyectoCondicion}
+      GROUP BY e.id, e.nombre
       ORDER BY tareas_completadas DESC
     `, queryParams);
     
@@ -125,32 +122,16 @@ async function execute(filtros, usuarioId) {
       // Calcular tasa de finalización de tareas
       equipo.tasa_finalizacion = equipo.total_tareas > 0 ? 
         Math.round((equipo.tareas_completadas / equipo.total_tareas) * 100) : 0;
-      
-      // Consultar horas trabajadas por el equipo
-      const horasEquipo = await db.oneOrNone(`
-        SELECT 
-          SUM(horas_trabajadas) as total_horas
-        FROM registro_horas
-        WHERE equipo_id = $1 AND fecha >= $2 AND fecha <= $3
-      `, [equipo.equipo_id, fechaInicio, fechaFin]);
-      
-      equipo.horas_trabajadas = horasEquipo ? parseFloat(horasEquipo.total_horas) || 0 : 0;
-      
-      // Calcular eficiencia (tareas completadas por hora)
-      equipo.eficiencia = equipo.horas_trabajadas > 0 ? 
-        parseFloat((equipo.tareas_completadas / equipo.horas_trabajadas).toFixed(2)) : 0;
     }
     
     // Obtener datos de rendimiento general
     const resumenGeneral = {
       total_equipos: equiposData.length,
-      total_tareas: equiposData.reduce((sum, equipo) => sum + parseInt(equipo.total_tareas), 0),
-      tareas_completadas: equiposData.reduce((sum, equipo) => sum + parseInt(equipo.tareas_completadas), 0),
+      total_tareas: equiposData.reduce((sum, equipo) => sum + parseInt(equipo.total_tareas || 0), 0),
+      tareas_completadas: equiposData.reduce((sum, equipo) => sum + parseInt(equipo.tareas_completadas || 0), 0),
       tasa_finalizacion_global: 0,
       promedio_dias_por_tarea: 0,
-      total_recursos_asignados: equiposData.reduce((sum, equipo) => sum + parseInt(equipo.total_recursos_asignados), 0),
-      equipo_mas_productivo: null,
-      equipo_mas_recursos: null
+      total_recursos: equiposData.reduce((sum, equipo) => sum + parseInt(equipo.total_recursos || 0), 0)
     };
     
     // Calcular tasa de finalización global
@@ -164,7 +145,7 @@ async function execute(filtros, usuarioId) {
     const equiposConTareas = equiposData.filter(equipo => equipo.promedio_dias_tarea != null);
     if (equiposConTareas.length > 0) {
       resumenGeneral.promedio_dias_por_tarea = parseFloat(
-        (equiposConTareas.reduce((sum, equipo) => sum + parseFloat(equipo.promedio_dias_tarea), 0) / 
+        (equiposConTareas.reduce((sum, equipo) => sum + parseFloat(equipo.promedio_dias_tarea || 0), 0) / 
         equiposConTareas.length).toFixed(2)
       );
     }
@@ -181,10 +162,6 @@ async function execute(filtros, usuarioId) {
           // Si la tasa es igual, ordenar por tiempo promedio (menor a mayor)
           return a.promedio_dias_tarea - b.promedio_dias_tarea;
         })[0] || null;
-      
-      // Determinar el equipo con más recursos asignados
-      resumenGeneral.equipo_mas_recursos = equiposData
-        .sort((a, b) => b.total_recursos_asignados - a.total_recursos_asignados)[0] || null;
     }
     
     // Resultados del informe

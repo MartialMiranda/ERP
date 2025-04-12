@@ -37,30 +37,33 @@ async function execute(usuarioId, filtros = {}) {
     // Construir la consulta base
     let query = `
       SELECT r.*,
-             u.nombre as creador_nombre,
+             p.nombre as proyecto_nombre,
              (
                SELECT COUNT(*) 
-               FROM recurso_asignaciones ra 
-               WHERE ra.recurso_id = r.id AND (ra.fecha_fin IS NULL OR ra.fecha_fin > CURRENT_DATE)
-             ) as asignaciones_activas
+               FROM equipo_usuarios eu
+               JOIN equipos e ON eu.equipo_id = e.id 
+               JOIN proyecto_equipos pe ON e.id = pe.equipo_id
+               WHERE pe.proyecto_id = r.proyecto_id
+             ) as equipos_asignados
       FROM recursos r
-      LEFT JOIN usuarios u ON r.creado_por = u.id
+      LEFT JOIN proyectos p ON r.proyecto_id = p.id
       WHERE 1=1
     `;
     
     const queryParams = [];
     let paramCount = 1;
     
-    // Por defecto, mostrar recursos propios o los que están asignados a equipos donde el usuario es miembro
+    // Por defecto, mostrar recursos de proyectos donde el usuario es miembro de algún equipo
     const accesoBasico = `
-      (r.creado_por = $${paramCount} OR 
-       EXISTS (
-         SELECT 1 
-         FROM recurso_asignaciones ra
-         JOIN equipos e ON ra.equipo_id = e.id
-         LEFT JOIN equipo_usuarios eu ON e.id = eu.equipo_id
-         WHERE ra.recurso_id = r.id AND (e.lider_id = $${paramCount} OR eu.usuario_id = $${paramCount})
-       ))
+      (
+        p.creado_por = $${paramCount} OR
+        EXISTS (
+          SELECT 1 
+          FROM proyecto_equipos pe
+          JOIN equipo_usuarios eu ON pe.equipo_id = eu.equipo_id
+          WHERE pe.proyecto_id = r.proyecto_id AND eu.usuario_id = $${paramCount}
+        )
+      )
     `;
     queryParams.push(usuarioId);
     paramCount++;
@@ -69,28 +72,13 @@ async function execute(usuarioId, filtros = {}) {
     if (filtros.modo === 'todos') {
       // En modo 'todos', no aplicar restricción adicional
       // Solo administradores deberían poder usar este modo, verificar permisos en el controlador
-    } else if (filtros.modo === 'creados') {
-      // Solo recursos creados por el usuario
-      query += ` AND r.creado_por = $${paramCount - 1}`;
     } else {
-      // Modo por defecto: recursos propios o asignados a equipos donde es miembro
+      // Modo por defecto: recursos de proyectos donde es miembro de algún equipo o creador
       query += ` AND ${accesoBasico}`;
     }
     
     // Aplicar filtros adicionales
     const whereClauses = [];
-    
-    // Filtro por tipo
-    if (filtros.tipo) {
-      whereClauses.push(`r.tipo = $${paramCount++}`);
-      queryParams.push(filtros.tipo);
-    }
-    
-    // Filtro por disponibilidad
-    if (filtros.disponibilidad) {
-      whereClauses.push(`r.disponibilidad = $${paramCount++}`);
-      queryParams.push(filtros.disponibilidad);
-    }
     
     // Filtro por nombre o descripción (búsqueda parcial)
     if (filtros.busqueda) {
@@ -99,47 +87,34 @@ async function execute(usuarioId, filtros = {}) {
       paramCount++;
     }
     
-    // Filtro por rango de costo
-    if (filtros.costo_minimo !== undefined) {
-      whereClauses.push(`r.costo >= $${paramCount++}`);
-      queryParams.push(parseFloat(filtros.costo_minimo));
+    // Filtro por cantidad
+    if (filtros.cantidad_minima !== undefined) {
+      whereClauses.push(`r.cantidad >= $${paramCount++}`);
+      queryParams.push(parseInt(filtros.cantidad_minima));
     }
     
-    if (filtros.costo_maximo !== undefined) {
-      whereClauses.push(`r.costo <= $${paramCount++}`);
-      queryParams.push(parseFloat(filtros.costo_maximo));
+    if (filtros.cantidad_maxima !== undefined) {
+      whereClauses.push(`r.cantidad <= $${paramCount++}`);
+      queryParams.push(parseInt(filtros.cantidad_maxima));
     }
     
-    // Filtro por moneda
-    if (filtros.moneda) {
-      whereClauses.push(`r.moneda = $${paramCount++}`);
-      queryParams.push(filtros.moneda);
+    // Filtro por proyecto
+    if (filtros.proyecto_id) {
+      whereClauses.push(`r.proyecto_id = $${paramCount++}`);
+      queryParams.push(filtros.proyecto_id);
     }
     
-    // Filtro por equipo asignado
+    // Filtro por equipo asignado al proyecto
     if (filtros.equipo_id) {
       whereClauses.push(`
         EXISTS (
           SELECT 1 
-          FROM recurso_asignaciones ra 
-          WHERE ra.recurso_id = r.id AND ra.equipo_id = $${paramCount} AND 
-                (ra.fecha_fin IS NULL OR ra.fecha_fin > CURRENT_DATE)
+          FROM proyecto_equipos pe 
+          WHERE pe.proyecto_id = r.proyecto_id AND pe.equipo_id = $${paramCount}
         )
       `);
       queryParams.push(filtros.equipo_id);
       paramCount++;
-    }
-    
-    // Filtro por recursos disponibles (sin asignaciones activas)
-    if (filtros.disponibles === 'true') {
-      whereClauses.push(`
-        NOT EXISTS (
-          SELECT 1 
-          FROM recurso_asignaciones ra 
-          WHERE ra.recurso_id = r.id AND 
-                (ra.fecha_fin IS NULL OR ra.fecha_fin > CURRENT_DATE)
-        )
-      `);
     }
     
     // Añadir cláusulas WHERE adicionales si hay filtros
@@ -151,7 +126,7 @@ async function execute(usuarioId, filtros = {}) {
     query += ` ORDER BY `;
     
     if (filtros.ordenar_por) {
-      const camposValidos = ['nombre', 'tipo', 'costo', 'disponibilidad', 'creado_en'];
+      const camposValidos = ['nombre', 'cantidad', 'creado_en'];
       const campoOrden = camposValidos.includes(filtros.ordenar_por) ? 
         `r.${filtros.ordenar_por}` : 'r.creado_en';
       
@@ -173,24 +148,51 @@ async function execute(usuarioId, filtros = {}) {
     const recursos = await db.manyOrNone(query, queryParams);
     
     // Consulta para obtener el total de recursos (para la paginación)
-    let countQuery = query.replace(/SELECT r\.\*,[\s\S]*FROM/, 'SELECT COUNT(DISTINCT r.id) FROM');
-    countQuery = countQuery.substring(0, countQuery.indexOf('ORDER BY'));
+    let countQuery = `
+      SELECT COUNT(DISTINCT r.id)
+      FROM recursos r
+      LEFT JOIN proyectos p ON r.proyecto_id = p.id
+      WHERE 1=1
+    `;
+    
+    // Añadir restricción de acceso según modo
+    if (filtros.modo !== 'todos') {
+      countQuery += ` AND ${accesoBasico}`;
+    }
+    
+    // Añadir las mismas cláusulas WHERE adicionales
+    if (whereClauses.length > 0) {
+      countQuery += ` AND ${whereClauses.join(' AND ')}`;
+    }
     
     const countParams = queryParams.slice(0, paramCount - 2); // Excluir parámetros de LIMIT y OFFSET
     const totalCount = await db.one(countQuery, countParams);
     
     logger.info(`Recursos encontrados: ${recursos.length}, Total: ${totalCount.count}`);
     
-    // Para cada recurso, obtener una vista previa de asignaciones activas (limitado por eficiencia)
+    // Para cada recurso, obtener una vista previa de equipos asociados al proyecto
     for (const recurso of recursos) {
-      recurso.asignaciones_preview = await db.manyOrNone(`
-        SELECT ra.id, ra.equipo_id, e.nombre as equipo_nombre, ra.fecha_inicio, ra.fecha_fin, ra.cantidad
-        FROM recurso_asignaciones ra
-        JOIN equipos e ON ra.equipo_id = e.id
-        WHERE ra.recurso_id = $1 AND (ra.fecha_fin IS NULL OR ra.fecha_fin > CURRENT_DATE)
-        ORDER BY ra.fecha_inicio DESC
-        LIMIT 3
-      `, [recurso.id]);
+      if (recurso.proyecto_id) {
+        // Obtener equipos del proyecto
+        recurso.equipos_preview = await db.manyOrNone(`
+          SELECT e.id, e.nombre, pe.creado_en
+          FROM equipos e
+          JOIN proyecto_equipos pe ON e.id = pe.equipo_id
+          WHERE pe.proyecto_id = $1
+          ORDER BY pe.creado_en DESC
+          LIMIT 3
+        `, [recurso.proyecto_id]);
+        
+        // Obtener información del proyecto
+        recurso.proyecto = await db.oneOrNone(`
+          SELECT p.id, p.nombre, p.estado, p.fecha_inicio, p.fecha_fin
+          FROM proyectos p
+          WHERE p.id = $1
+        `, [recurso.proyecto_id]);
+      } else {
+        recurso.equipos_preview = [];
+        recurso.proyecto = null;
+      }
     }
     
     return {
